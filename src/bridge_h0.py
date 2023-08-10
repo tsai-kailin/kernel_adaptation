@@ -1,9 +1,10 @@
 from utils import *
-from cme import ConditonalMeanEmbed
+from cme import ConditionalMeanEmbed
 import numpy as np
 import jax.numpy as jnp
 import jax.scipy.linalg as jsla
 import time
+import scipy.sparse as ss
 
 
 class Bridge_h0:
@@ -12,10 +13,10 @@ class Bridge_h0:
       Gamma_xc = mu_w_cx.get_mean_embed(x,c)['Gamma'] #(n1_samples, n2_samples)
       \Sigma = (Gamma_xc^T K_ww Gamma_xc)K_cc
   """
-  def __init__(self, Cw_xc, covars, Y, lam, scale=1.,x0=None):
+  def __init__(self, Cw_xc, covars, Y, lam, scale=1.,x0=None, method='original'):
     """Initiate the parameters
     Args:
-      Cw_xc: object, ConditonalMeanEmbed
+      Cw_xc: object, ConditionalMeanEmbed
       covars: covariates, dict {"C": ndarray shape=(n2_samples, n1_features), "X": ndarray shape=(n2_samples, n2_features)}
       Y: labels, (n2_samples,)
       lam: reuglarization parameter, lam
@@ -38,7 +39,7 @@ class Bridge_h0:
     assert(set(params["Xlist"]) == set(covars.keys()))
     # construct Gamma_xc matrix
     Gamma_xc = Cw_xc.get_mean_embed(covars)["Gamma"] #shape = (n1_samples, n2_samples)
-    # G = katri_rao_col(Gamma_xc,  jnp.eye(n_sample))
+    
 
     # construct sigma
     Sigma = Hadamard_prod(mat_mul(mat_mul(Gamma_xc.T, K_WW), Gamma_xc), K_CC)
@@ -58,27 +59,55 @@ class Bridge_h0:
     
     t2 = time.time()
 
-    #using conjugate gradient descent
-    #F = F.at[jnp.abs(F)<1e-5].set(0.0)
-    #sparse_F = ss.csr_matrix(np.array(F))
-    #vec_alpha, exit_code = scipy.sparse.linalg.cg(sparse_F, np.array(Y), x0)
-    #print('solve status:', exit_code)
-    #vec_alpha = jnp.array(vec_alpha)
+
     
     #using linear solver
-    #vec_alpha = jsla.solve(F, Y)
-    q = min(5*int(np.sqrt(n_sample)), n_sample)
-    select_id = np.random.choice(n_sample, q, replace=False)
-    K_q = Sigma[select_id, :][:, select_id]
+    
+    
+    if method == 'nystrom':
+      print('use Nystrom method to estimate h0')
+      #q = min(2*int(np.sqrt(n_sample)), int(n_sample/10))
+      q = min(250, n_sample)
+      select_id = np.random.choice(n_sample, q, replace=False)
+      
+      K_q = Sigma[select_id, :][:, select_id]
+      #evaluate the spectrum of K
+      v, uh = jnp.linalg.eigh(Sigma)
+      num_id = jnp.where(jnp.abs(v)>1e-5)[0]
+      print("eigenvalue greater than 1e-5: ", num_id.size, n_sample)
 
 
-    K_nq = Sigma[:, select_id]
-    
-    inv_Kq = jsla.solve(K_q, jnp.eye(q))
-    inv_Kq = jsla.solve(lam*n_sample*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q))
-    aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_Kq), K_nq.T))/(lam*n_sample)
-    vec_alpha = mat_mul(aprox_K, Y)
-    
+      K_nq = Sigma[:, select_id]
+      
+      inv_Kq = jsla.solve(K_q+1e-5*jnp.eye(q), jnp.eye(q), assume_a='pos')
+      if jnp.isnan(inv_Kq).any():
+        print("inv_Kq is nan 1")
+      
+      #inversion method 1
+      inv_K = jsla.solve(lam*n_sample*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
+      #inv_Kq = jsla.solve(lam*n_sample*K_q + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
+      #inversion method 2
+      #inv_K = jsla.solve(lam*n_sample*jnp.eye(q) + mat_mul(inv_Kq, mat_mul(K_nq.T, K_nq)) , jnp.eye(q))
+      
+      if jnp.isnan(inv_K).any():
+        print("inv_K is nan 2")
+      #inversion method 1
+      aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), K_nq.T))/(lam*n_sample)
+      #inversion methos 2
+      #aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), mat_mul(inv_Kq, K_nq.T)))/(lam*n_sample)
+
+      vec_alpha = mat_mul(aprox_K, Y)
+    elif method == 'cg':
+      print('use conjugate gradeint to estimate h0')
+      #using conjugate gradient descent
+      F = F.at[jnp.abs(F)<1e-5].set(0.0)
+      sparse_F = ss.csr_matrix(np.array(F))
+      vec_alpha, exit_code = ss.linalg.cg(sparse_F, np.array(Y), x0)
+      print('solve status:', exit_code)
+      vec_alpha = jnp.array(vec_alpha)
+    else:
+      print('use linear solver to estimate h0')
+      vec_alpha = jsla.solve(F, Y)
     
     #use Nystrom approximation method
     """
@@ -108,14 +137,16 @@ class Bridge_h0:
     aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_Kq), K_nq.T))/(lam*n_sample)
     vec_alpha = mat_mul(aprox_K, Y)
     """
-
+    t25 = time.time()
     #slower method
+    #G = katri_rao_col(Gamma_xc,  jnp.eye(n_sample))
     #vec_alpha = mat_mul(G, vec_alpha)
 
     #faster method
+    
     vec_alpha = stage2_weights(Gamma_xc, vec_alpha)
     t3 = time.time()
-    print("processing time: matrix preparation:%.4f solving inverse:%.4f"%(t2-t1, t3-t2))
+    print("processing time: matrix preparation:%.4f solving inverse:%.4f, %.4f"%(t2-t1, t25-t2, t3-t25))
     self.alpha = vec_alpha.reshape((-1, n_sample)) #shape=(n1_sample, n2_sample)
 
 
@@ -178,17 +209,17 @@ class Bridge_h0:
     """ E[Y | x] = <h0, cme_w_x \otimes cme_c_x>
     Args:
       new_x: ndarray shape=(n5_samples, n_features)
-      cme_w_x: ConditonalMeanEmbed, object
+      cme_w_x: ConditionalMeanEmbed, object
       cme_c_x: CME_m0, object
     """
     t1 = time.time()
-    params_w = cme_w_x.get_params()
-    new_w = params_w["Y"]
+    #params_w = cme_w_x.get_params()
+    new_w = cme_w_x.Y #params_w["Y"]
     Gamma_w = cme_w_x.get_mean_embed(new_x)['Gamma'] #(n3_samples, n5_samples)
 
 
-    params_c = cme_c_x.get_params()
-    new_c = params_c["C"]
+    #params_c = cme_c_x.get_params()
+    new_c = cme_c_x.C #params_c["C"]
 
     Gamma_c = cme_c_x.get_A_operator(cme_w_x, new_x)['beta'].T #(n4_sample, n5_sample)
     t2 = time.time()
@@ -212,17 +243,17 @@ class Bridge_h0:
     """ E[Y | x] = <h0, cme_w_x \otimes cme_c_x>
     Args:
       new_x: ndarray shape=(n5_samples, n_features)
-      cme_w_x: ConditonalMeanEmbed, object
-      cme_c_x: ConditonalMeanEmbed, object
+      cme_w_x: ConditionalMeanEmbed, object
+      cme_c_x: ConditionalMeanEmbed, object
     """
     t1 = time.time()
-    params_w = cme_w_x.get_params()
-    new_w = params_w["Y"]
+    #params_w = cme_w_x.get_params()
+    new_w = cme_w_x.Y #params_w["Y"]
     Gamma_w = cme_w_x.get_mean_embed(new_x)['Gamma'] #(n3_samples, n5_samples)
 
 
-    params_c = cme_c_x.get_params()
-    new_c = params_c["Y"]
+    #params_c = cme_c_x.get_params()
+    new_c = cme_c_x.Y #params_c["Y"]
     Gamma_c = cme_c_x.get_mean_embed(new_x)['Gamma'] #(n4_sample, n5_sample)
     t2 = time.time()
     # compute K_newWW
@@ -241,5 +272,8 @@ class Bridge_h0:
 
     print("inference time: %.4f/%.4f/%.4f"%(t2-t1, t3-t2, t4-t3))
     return result
+
+
+
 
 

@@ -1,11 +1,11 @@
 from utils import *
-from cme import ConditonalMeanEmbed
+from cme import ConditionalMeanEmbed
 import numpy as np
 import jax.numpy as jnp
 import jax.scipy.linalg as jsla
 import time
-
-
+import scipy.sparse as ss
+import scipy
 
 
 
@@ -21,7 +21,7 @@ class CME_m0:
   def __init__(self, Cw_x, covars, lam, scale=1.):
     """Initiate the parameters
     Args:
-      Cw_x: object, ConditonalMeanEmbed
+      Cw_x: object, ConditionalMeanEmbed
       covars: covariates, dict {"Xi": ndarray shape=(n5_samples, n1_features)}
       : labels, (n2_samples,)
       lam: reuglarization parameter, lam
@@ -136,7 +136,7 @@ class CME_m0_ver2(CME_m0):
   E = \sum_j diag(d_j)K_CC\diag(d_j)
   d_j = Kx(x_j)\odot K_xx(K_xx+lam*n4*I)^{-1}K_WW(K_xx+lam*n4*I)^{-1}K_x(x_j)
   """
-  def __init__(self, Cw_x, covars, lam, scale=1.):
+  def __init__(self, Cw_x, covars, lam, scale=1., method='original'):
     self.sc = scale
     self.Cw_x = Cw_x
     params = Cw_x.get_params()
@@ -151,42 +151,48 @@ class CME_m0_ver2(CME_m0):
 
     self.C = covars['C']
     self.n_samples = self.C.shape[0]
-    K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
-
+    
+    
 
     self.X = covars['X']
+
+    #linear solver
+   
     K_xx = ker_mat(jnp.array(self.X), jnp.array(self.X), self.sc)
 
-    M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
     D = Hadamard_prod(K_xx, kx_g_kx)
-    DC = Hadamard_prod(mat_mul(D,D),K_cc)
-
-    fn = lambda x: x*K_cc*x
-    v = vmap(fn, (1))
-    #print("rank of M", jnp.linalg.matrix_rank(M))
-    #print("sparsity", (M>=1e-5).sum()/M.size)
-    #U = v(D).sum(axis=0)
-    #print("rank of v(D)", jnp.linalg.matrix_rank(U))
-    #print("sparsity", (U>=1e-5).sum()/U.size)
-
-
-
-    #Sigma = DC+lam*self.n_samples*M
-    #m1 = M.sum(axis=0)
-    #alpha = jsla.solve(Sigma, m1)
     
-    #Sigma = Sigma.at[jnp.abs(Sigma)<1e-5].set(0.0)
-    #sparse_Sigma = ss.csr_matrix(np.array(Sigma))
-    #alpha, exit_code = scipy.sparse.linalg.cg(sparse_Sigma, np.array(m1), maxiter=5000)
-    
-    #print('solve status:', exit_code)
-    #alpha2 = jnp.array(alpha)
-    
-    alpha = 1./(jnp.diag(D)+lam*self.n_samples)
+    if method == 'simple':
+        alpha = 1./(jnp.diag(D)+lam*self.n_samples) #very unstable
+    elif method == 'cg':
+        K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+        M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
+        
+        DC = Hadamard_prod(mat_mul(D,D),K_cc)
+        Sigma = DC+lam*self.n_samples*M
+        Sigma = Sigma.at[jnp.abs(Sigma)<1e-5].set(0.0)
+        sparse_Sigma = ss.csr_matrix(np.array(Sigma))
+        m1 = M.sum(axis=0)
+        alpha, exit_code = ss.linalg.cg(sparse_Sigma, np.array(m1), maxiter=5000)
+        
+        print('solve status:', exit_code)
+        alpha = jnp.array(alpha)
+    else:
+        K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+        M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
+        
+        DC = Hadamard_prod(mat_mul(D,D),K_cc)
+        Sigma = DC+lam*self.n_samples*M
+        m1 = M.sum(axis=0)
+        alpha = jsla.solve(Sigma, m1)
 
-    #print('error: ', jnp.linalg.norm(alpha-alpha2), jnp.linalg.norm(alpha-alpha3), jnp.linalg.norm(alpha2-alpha3))
-    #Sigma = jsla.solve(M,v(D).sum(axis=0))+lam*self.n_samples*jnp.eye(self.n_samples)
-    #alpha = jsla.solve(Sigma, jnp.ones(self.n_samples))
+
+
+    #Conjugate gradient descent    
+
+    
+    #simplified version
+    
     self.alpha = alpha
 
   def get_A_operator(self, Cw_x, new_x):

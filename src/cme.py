@@ -3,12 +3,37 @@ from utils import *
 import numpy as np
 import jax.numpy as jnp
 import jax.scipy.linalg as jsla
+import scipy
 
 
+def leverage_scores(K, q, lam):
+    """
+    code adapted from: 
+    C. Williams and M. Seeger, "Using the Nystrom method to speed up kernel machines," in Proceedings of the 14th Annual Conference on Neural Information Processing Systems, 2001, no. EPFL-CONF.161322, pp. 682-688.
 
+    A. Alaoui and M. Mahoney, "Fast Randomized Kernel Methods With Statistical Guarantees", arXiv, 2001.
 
+    Compute leverage scores for matrix K and regularization parameter lbd.
 
-class ConditonalMeanEmbed:
+    :param K: (``numpy.ndarray``) or of (``Kinterface``). The kernel to be approximated with G.
+
+    :return: (``numpy.ndarray``) a vector of leverage scores to determine a sampling distribution.
+    """
+    dg = jnp.diag(K) 
+    #print(dg)
+    pi = dg / np.sum(dg)
+    #print(pi, np.sum(pi))
+    n = K.shape[0]
+    linxs = np.random.choice(range(n), size=q, replace=True)
+    C = K[:, linxs]
+    W = C[linxs, :]
+    B = C.dot(np.real(scipy.linalg.sqrtm(W)))
+    BTB = B.T.dot(B)
+    BTBi = np.linalg.inv(BTB + n * lam * np.eye(q, q))
+    l = np.array([B[i, :].dot(BTBi).dot(B[i, :]) for i in range(n)])
+    return l / np.sum(l)
+
+class ConditionalMeanEmbed:
   """function class of conditional mean embedding
     C(Y|X) = Phi_Y(K_XX+lam*n1_samples*I)^{-1}Phi_X
     mu(Y|x) = C(Y|x=x) = Phi_Y(K_XX+lam*n1_samples*I)^{-1}Phi_X(x)
@@ -20,7 +45,7 @@ class ConditonalMeanEmbed:
     X["X1"] = jax.random.normal(key, shape=(n1_samples,))
     X["X2"] = jax.random.normal(key, shape=(n1_samples, 2))
     Y = jax.random.normal(key2, shape=(n1_samples,))
-    C_YX = ConditonalMeanEmbed(Y, X, 0.1)
+    C_YX = ConditionalMeanEmbed(Y, X, 0.1)
 
     new_x = {}
     n2_samples = 5
@@ -30,7 +55,7 @@ class ConditonalMeanEmbed:
     new_y = jax.random.normal(key2, shape=(n3_samples,))
     C_YX(new_y, new_x)
   """
-  def __init__(self, Y, X, lam, scale=1, q=None):
+  def __init__(self, Y, X, lam, scale=1, method='original', q=None):
     """ initiate the parameters
       Args:
         Y: dependent variables, ndarray shape=(n1_samples, n2_features)
@@ -45,7 +70,7 @@ class ConditonalMeanEmbed:
     assert(lam >= 0.)
     self.lam = lam
     self.sc = scale
-
+    self.method = method
     # construct of gram matrix
     K_XX = jnp.ones((self.n_samples, self.n_samples))
     for key in self.X_list:
@@ -56,36 +81,87 @@ class ConditonalMeanEmbed:
     self.K_XX = K_XX
 
     #compute Nystrom approximation
-    if q == None:
-      q = min(5*int(np.sqrt(self.n_samples)), int(self.n_samples/10))
-    select_x = np.random.choice(self.n_samples, q, replace=True)
-    K_q = K_XX[select_x, :][:, select_x]
-    K_nq = K_XX[:, select_x]
-    """
-    K_nq = jnp.ones((self.n_samples, q))
-    for key in self.X_list:
-      x = X[key]
-      if len(x.shape) > 1:
-        temp = ker_mat(jnp.array(x), jnp.array(x[select_x,:]), self.sc) 
+    if self.method=='nystrom':
+      if q == None:
+      
+        q = min(250, self.n_samples)
+      if q < self.n_samples:
+        select_x = np.random.choice(self.n_samples, q, replace=False)
+        #select_x = np.arange(q)
+        #unselect_x = np.array(list(set(np.arange(self.n_samples)) - set(select_x)))
+        #reorder_x = np.concatenate((select_x, unselect_x))
       else:
-        temp = ker_mat(jnp.array(x), jnp.array(x[select_x]), self.sc) 
-      K_nq = Hadamard_prod(K_nq, temp)
+        select_x = np.arange(self.n_samples)
+        #reorder_x = np.arange(self.n_samples)
+      """
+      
+      K_nq = jnp.ones((self.n_samples, q))
+      for key in self.X_list:
+        x = X[key]
+        if len(x.shape) > 1:
+          temp = ker_mat(jnp.array(x), jnp.array(x[select_x,:]), self.sc) 
+        else:
+          temp = ker_mat(jnp.array(x), jnp.array(x[select_x]), self.sc) 
+        K_nq = Hadamard_prod(K_nq, temp)
 
-    K_q = jnp.ones((q, q))
-    for key in self.X_list:
-      x = X[key]
-      if len(x.shape) > 1:
-        temp = ker_mat(jnp.array(x[select_x,:]), jnp.array(x[select_x,:]), self.sc) 
-      else:
-        temp = ker_mat(jnp.array(x[select_x]), jnp.array(x[select_x]), self.sc) 
-    K_q = Hadamard_prod(K_q, temp)   
-    """
+      K_q = jnp.ones((q, q))
+      for key in self.X_list:
+        x = X[key]
+        if len(x.shape) > 1:
+          temp = ker_mat(jnp.array(x[select_x,:]), jnp.array(x[select_x,:]), self.sc) 
+        else:
+          temp = ker_mat(jnp.array(x[select_x]), jnp.array(x[select_x]), self.sc) 
+      K_q = Hadamard_prod(K_q, temp)   
+      """
+      K_q = self.K_XX[select_x, :][:, select_x]
+      K_nq = self.K_XX[:, select_x]
 
-    inv_Kq = jsla.solve(K_q, jnp.eye(q))#, assume_a='pos')
-    inv_Kq = jsla.solve(lam*self.n_samples*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q))#, assume_a='pos')
-    self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(mat_mul(K_nq, inv_Kq), K_nq.T))/(lam*self.n_samples)
+      # evaluate the spectrum of the K_XX
+      #u,vh = jnp.linalg.eigh(self.K_XX)
+      #num = np.where(np.abs(u)>1e-5)[0].size
+      #print('ratio of eigenvalues greater than 1e-5:', num/self.n_samples)
 
+      u,vh = jnp.linalg.eigh(K_q)
+      select_id = np.where(np.abs(u)>1e-5)[0]
+      new_u = u[select_id]
+      new_vh = vh[:, select_id]
+      inv_Kq_sqrt = np.matmul(new_vh/np.sqrt(new_u),new_vh.T)
 
+      Q = K_nq.dot(inv_Kq_sqrt)
+
+      print('kernel approximation error:', jnp.linalg.norm(self.K_XX - Q.dot(Q.T)))
+      
+      #inv_Kq = jnp.linalg.inv(K_q)
+      #if jnp.isnan(inv_Kq).any():
+      #  print("inv_Kq is nan 1")
+      
+      #inversion method 1
+      #inv_K = jnp.linalg.inv(self.lam*self.n_samples*inv_Kq + K_nq.T.dot(K_nq))#, jnp.eye(q), assume_a='pos')
+      #inversion method 2
+      #inv_K = jsla.solve(lam*self.n_samples*jnp.eye(q) + mat_mul(inv_Kq, mat_mul(K_nq.T, K_nq)), jnp.eye(q))
+    
+      #following is unstable
+      #inv_K = jsla.solve(lam*self.n_samples*K_q + mat_mul(K_nq.T, K_nq), jnp.eye(q))
+      #if jnp.isnan(inv_K).any():
+      #  print("inv_K is nan 2")   
+      # for inversion method 1
+      #self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(K_nq.dot(inv_K), K_nq.T))/(self.lam*self.n_samples)
+      
+      
+      inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
+      if jnp.isnan(inv_temp).any():
+        print("inv_temp is nan")         
+      self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(Q.dot(inv_temp), Q.T))/(self.lam*self.n_samples)
+
+      # for inversion method 2
+      # self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(mat_mul(K_nq, inv_K), mat_mul(inv_Kq, K_nq.T)))/(lam*self.n_samples)      
+      
+      # evaluation
+      Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
+      inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
+
+      print('distance: ', jnp.linalg.norm(inv_Gx-self.aprox_K_XX))
+      
   def lam_selection(self):
     """
     """
@@ -96,9 +172,10 @@ class ConditonalMeanEmbed:
     """
     Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
 
-    K_YY = ker_mat(jnp.array(self.Y), jnp.array(self.Y), self.sc)
-    out_dict = {"GramX": Gx, "GramY": K_YY, "Y":self.Y, "X":self.X, "Xlist":self.X_list, "scale":self.sc}
+    #K_YY = ker_mat(jnp.array(self.Y), jnp.array(self.Y), self.sc)
+    out_dict = {"GramX": Gx, "Y":self.Y, "X":self.X, "Xlist":self.X_list, "scale":self.sc}
     return out_dict
+  
 
   def get_mean_embed(self, new_x):
     """ compute the mean embedding given new_x C(Y|new_x)
@@ -106,6 +183,7 @@ class ConditonalMeanEmbed:
         new_x: independent varaibles, dict {"Xi": ndarray shape=(n2_samples, n1_features)}
       Returns:
     """
+    
     Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
     n2_samples = new_x[self.X_list[0]].shape[0]
 
@@ -119,19 +197,36 @@ class ConditonalMeanEmbed:
     #print("GX is pd",is_pos_def(Gx))
     #if self.n_samples < 1000:
       #direct solver
-    #Gamma= jsla.solve(Gx, Phi_Xnx, assume_a='pos') #shape=(n1_samples, n2_samples),
-    #else:
+    
+    
+
+      #use Nystrom approximation
+    if self.method == 'nystrom':
+      print('use Nystrom method to estimate cme')
+      Gamma = self.aprox_K_XX.dot(Phi_Xnx)
+    elif self.method == 'cg':
+      print('use conjugate gradient to estimate cme')
       #use conjugate gradient descent
-      #Gx = Gx.at[jnp.abs(Gx)<1e-5].set(0.0)
-      #fn = lambda x: jax.scipy.sparse.linalg.cg(Gx, x)[0]
-      #v = vmap(fn, 1)
-      #Gamma = v(Phi_Xnx).T
-
-    #use Nystrom approximation
-
-    Gamma = mat_mul(self.aprox_K_XX, Phi_Xnx)
+      Gx = Gx.at[jnp.abs(Gx)<1e-5].set(0.0)
+      fn = lambda x: jax.scipy.sparse.linalg.cg(Gx, x)[0]
+      v = vmap(fn, 1)
+      Gamma = v(Phi_Xnx).T
+    else:
+      print('use linear solver to estimate cme')
+      #print(self.X_list)
+      #Gamma= jsla.solve(Gx, Phi_Xnx, assume_a='pos') #shape=(n1_samples, n2_samples),
+      Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
+      inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
+      Gamma = inv_Gx.dot(Phi_Xnx)
+    
+    evaluate = False
+    if evaluate:
+      Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
+      inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
+      Gamma2 = inv_Gx.dot(Phi_Xnx)
+      print('difference of Gamma', jnp.linalg.norm(Gamma-Gamma2))
       
-
+    
     return {"Y": self.Y, "Gamma": Gamma, "scale": self.sc} # jnp.dot(kernel(Y,y; sc), Gamma)
 
   def __call__(self, new_y, new_x):
