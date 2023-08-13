@@ -153,3 +153,63 @@ def standardise(X):
     else:
         X_scaled = scaler.fit_transform(X).squeeze()
         return X_scaled, scaler
+
+
+def truncate_sqrtinv(X, thre=1e-5):
+    """
+    """
+    u,vh = jnp.linalg.eigh(X)
+    if jnp.isnan(u).any():
+        print("encounter invalid eigenvalue")
+    if jnp.isnan(vh).any():
+        print("encounter invalid eigenvector")
+    select_id = np.where(u>thre)[0]
+
+    new_u = u[select_id]
+    new_vh = vh[:, select_id]
+    temp = np.sqrt(new_u)
+    if jnp.isnan(temp).any():
+        print("encounter invalid sqrt eigenvalue")
+    inv_sqrt = np.matmul(new_vh/np.sqrt(new_u),new_vh.T)
+    return inv_sqrt
+
+
+def truncate_inv(X, thre=1e-5):
+    """
+    """
+    u,vh = jnp.linalg.eigh(X)
+    if jnp.isnan(u).any():
+        print("encounter invalid eigenvalue")
+    if jnp.isnan(vh).any():
+        print("encounter invalid eigenvector")
+    select_id = np.where(u>thre)[0]
+
+    new_u = u[select_id]
+    new_vh = vh[:, select_id]
+    temp = np.sqrt(new_u)
+    if jnp.isnan(temp).any():
+        print("encounter invalid sqrt eigenvalue")
+    inv_sqrt = np.matmul(new_vh/(new_u),new_vh.T)
+    return inv_sqrt
+
+
+def truncate_sqrt(X, thre=1e-5):
+    """
+    """
+    u,vh = jnp.linalg.eigh(X)
+    select_id = np.where(u>thre)[0]
+
+    new_u = u[select_id]
+    new_vh = vh[:, select_id]
+    inv_sqrt = np.matmul(new_vh*np.sqrt(new_u), new_vh.T)
+    return inv_sqrt
+
+def woodbury_identity(Q, lam, n):
+    """ compute the inverse of (lam*n*I+QQ^T) using woodbury identitiy lemma
+    """
+    q = Q.shape[1]
+    inv_temp = jsla.solve(lam*n*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
+    if jnp.isnan(inv_temp).any():
+        print("inv_temp is nan")         
+    aprox_K = (jnp.eye(n)-(Q.dot(inv_temp)).dot(Q.T))/(lam*n)
+    return aprox_K

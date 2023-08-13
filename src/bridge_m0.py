@@ -165,6 +165,41 @@ class CME_m0_ver2(CME_m0):
     if method == 'simple':
         alpha = 1./(jnp.diag(D)+lam*self.n_samples) #very unstable
     elif method == 'cg':
+      K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+      M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
+      DC = Hadamard_prod(mat_mul(D,D),K_cc)
+      # nystrom M
+      q = min(250, self.n_samples)
+      select_x = np.random.choice(self.n_samples, q, replace=False)
+      K_q = M[select_x, :][:, select_x]
+      K_nq = M[:, select_x]
+
+      inv_Kq_sqrt = truncate_sqrtinv(K_q)
+      Q = K_nq.dot(inv_Kq_sqrt)
+      
+      aprox_M = Q.dot(Q.T)
+      print('truncate error M', jnp.linalg.norm(M-aprox_M))
+      
+      # nystrom M^{-1/2}GM^{-1/2}
+      inv_M_sqrt = jnp.array(truncate_sqrtinv(aprox_M))
+      u, vh = jnp.linalg.eigh(inv_M_sqrt)
+      id = np.where(np.abs(u)>1e-5)[0]
+      print('eigenvalue grater than 1e-5 inv_M_sqrt:',id.size/self.n_samples)    
+
+      M_sqrt = jnp.array(truncate_sqrt(aprox_M))
+      m1 = M_sqrt.sum(axis=0)
+      MGM = mat_mul(inv_M_sqrt, DC.dot(inv_M_sqrt))
+
+      Sigma = MGM + lam*self.n_samples*jnp.eye(self.n_samples)
+      Sigma = Sigma.at[jnp.abs(Sigma)<1e-5].set(0.0)
+      sparse_Sigma = ss.csr_matrix(np.array(Sigma))
+      temp_alpha, exit_code = ss.linalg.cg(sparse_Sigma, m1, maxiter=5000)
+      print('solve status:', exit_code)
+
+
+      temp_alpha = inv_M_sqrt.dot(jnp.array(temp_alpha))
+      alpha = temp_alpha/(lam*self.n_samples)
+      """
         K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
         M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
         
@@ -177,20 +212,190 @@ class CME_m0_ver2(CME_m0):
         
         print('solve status:', exit_code)
         alpha = jnp.array(alpha)
-    else:
+      """
+    elif method == 'original':
         K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
         M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
         
         DC = Hadamard_prod(mat_mul(D,D),K_cc)
+
+        #u, vh = jnp.linalg.eigh(DC)
+        #idx = np.where(np.abs(u)>1e-5)[0].size
+        #print('m0 ratio of eigv > 1e-5:', idx/self.n_samples)
+
         Sigma = DC+lam*self.n_samples*M
+
+        #u, vh = jnp.linalg.eigh(Sigma)
+        #idx = np.where(np.abs(u)>1e-5)[0].size
+        #print('sigma ratio of eigv > 1e-5:', idx/self.n_samples)
         m1 = M.sum(axis=0)
         alpha = jsla.solve(Sigma, m1)
 
+    elif method == "nystrom":
+      
+      K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+      M = Hadamard_prod(Hadamard_prod(K_xx, K_cc), kx_g_kx)
+      DC = Hadamard_prod(D.dot(D), K_cc)
+
+      #test rank
+
+      #u, vh = jnp.linalg.eigh(D)
+      #id = np.where(np.abs(u)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 D:',id.size/self.n_samples)    
+
+      #u, vh = jnp.linalg.eigh(D)
+      #id = np.where(np.abs(u**2)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 DD(reconstruct):',id.size/self.n_samples)    
+      
+      #new_u = u[id]
+      #new_vh = vh[:, id]
+      #DD2 = (new_vh*(new_u**2)).dot(new_vh.T)
+      #DC2 = Hadamard_prod(DD2, K_cc)
+      #print('approx error:', jnp.linalg.norm(DD2-D.dot(D)))
+
+      #u, vh = jnp.linalg.eigh(D.dot(D))
+      #id = np.where(np.abs(u)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 DD:',id.size/self.n_samples)    
+
+      #u, vh = jnp.linalg.eigh(mat_mul(D,D))
+      #id = np.where(np.abs(u)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 DD2:',id.size/self.n_samples)    
+
+      #u, vh = jnp.linalg.eigh(K_cc)
+      #id = np.where(np.abs(u)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 K_cc:',id.size/self.n_samples)    
+
+      #u, vh = jnp.linalg.eigh(DC)
+      #id = np.where(np.abs(u)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 DC:',id.size/self.n_samples)    
 
 
+      # nystrom M
+      q = min(500, self.n_samples)
+      select_x = np.random.choice(self.n_samples, q, replace=False)
+      K_q = M[select_x, :][:, select_x]
+      K_nq = M[:, select_x]
+
+      inv_Kq_sqrt = truncate_sqrtinv(K_q)
+      Q = K_nq.dot(inv_Kq_sqrt)
+      
+      aprox_M = Q.dot(Q.T)
+      #print('truncate error M', jnp.linalg.norm(M-aprox_M))
+      
+      # nystrom M^{-1/2}GM^{-1/2}
+      inv_M_sqrt = jnp.array(truncate_sqrtinv(aprox_M))
+      #u, vh = jnp.linalg.eigh(inv_M_sqrt)
+      #id = np.where(np.abs(u)>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 inv_M_sqrt:',id.size/self.n_samples)    
+
+      M_sqrt = jnp.array(truncate_sqrt(aprox_M))
+
+      MGM = inv_M_sqrt.dot(DC.dot(inv_M_sqrt))
+      #u, vh = jnp.linalg.eigh(MGM)
+      #id = np.where(u>1e-5)[0]
+      #print('eigenvalue grater than 1e-5 MGM:',id.size/self.n_samples)
+      
+      
+      q = min(1000, self.n_samples)
+      
+      select_x2 = np.random.choice(self.n_samples, q, replace=False)
+      K_q2 = MGM[select_x2, :][:, select_x2]
+      K_nq2 = MGM[:, select_x2]
+      
+      inv_Kq2_sqrt = truncate_sqrtinv(K_q2)
+      Q2 = K_nq2.dot(inv_Kq2_sqrt)
+      
+      aprox_inv = woodbury_identity(Q2, lam, self.n_samples)
+
+      temp_alpha = inv_M_sqrt.dot(aprox_inv.dot(M_sqrt.sum(axis=1)))
+      alpha = temp_alpha/(lam*self.n_samples)
+
+
+    elif method == "nystrom2":
+      K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+      M = Hadamard_prod(D, K_cc)
+      
+      u, vh = jnp.linalg.eigh(D)
+      id = np.where(np.abs(u**2)>1e-5)[0]
+      print('eigenvalue grater than 1e-5 DD(reconstruct):',id.size/self.n_samples)    
+      
+      new_u = u[id]
+      new_vh = vh[:, id]
+      DD2 = (new_vh*(new_u**2)).dot(new_vh.T)
+      DC = Hadamard_prod(D.dot(D), K_cc)
+      DC2 = Hadamard_prod(DD2, K_cc)
+
+      # compute the nystrom for M
+      q = min(500, self.n_samples)
+      select_x = np.random.choice(self.n_samples, q, replace=False)
+      K_q = M[select_x, :][:, select_x]
+      K_nq = M[:, select_x]
+      inv_Kq_sqrt = truncate_sqrtinv(K_q)
+      Q = K_nq.dot(inv_Kq_sqrt)
+      aprox_M = Q.dot(Q.T)
+
+      aprox_invM = truncate_inv(aprox_M)
+      print('approximation error for M:', jnp.linalg.norm(M-aprox_M))
+
+      u, vh = jnp.linalg.eigh(M)
+      select_id = np.where(u>1e-5)[0]
+      new_u = u[select_id]
+      new_vh = vh[:, select_id]
+      invM = truncate_inv(M)
+      #invM = jsla.solve(M, jnp.eye(self.n_samples))
+      print('approximation error for invM:', jnp.linalg.norm(invM-aprox_invM))
+      
+      # compute the nystrom for DC2
+      q = min(1000, self.n_samples)
+      select_x = np.random.choice(self.n_samples, q, replace=False)    
+      K_q2 = DC2[select_x, :][:, select_x]
+      K_nq2 = DC2[:, select_x]
+      inv_Kq2_sqrt = truncate_sqrtinv(K_q2)
+      Q2 = K_nq2.dot(inv_Kq2_sqrt)
+      #print('approximation error for DC:', jnp.linalg.norm(DC2-Q2.dot(Q2.T)))
+      """
+      inv_temp = jsla.solve(lam*self.n_samples*jnp.eye(q)+Q2.T.dot(Q2), jnp.eye(q))
+      temp = Q2.dot(inv_temp.dot(Q2.T))
+      alpha = (jnp.eye(self.n_samples)- invM.dot(temp)).sum(axis=0)/(lam*self.n_samples)
+      """
+      aprox_DC = Q2.dot(Q2.T) 
+      print('aproximation error for DC', jnp.linalg.norm(DC-aprox_DC))
+      Sigma = truncate_inv(M).dot(aprox_DC)+lam*self.n_samples*jnp.eye(self.n_samples)
+      
+      
+      Sigma2 = DC2 + lam*self.n_samples*M
+      print('aproximation error for Sigma', jnp.linalg.norm(Sigma2-Sigma))
+
+      m1 = M.sum(axis=0)
+
+      #alpha = jsla.solve(Sigma2, m1)
+      alpha = jsla.solve(Sigma, jnp.ones(self.n_samples))
     #Conjugate gradient descent    
 
-    
+    elif method == "gradient":
+      #implementation of gradient descent.
+      K_cc = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+
+      M = Hadamard_prod(D, K_cc)
+      max_itr = 5000
+      thre = 1e-3
+      res = thre*3
+      itr = 0
+      alpha = jnp.zeros(self.n_samples)
+      step = 1e-1
+      m1 = M.sum(axis=0)
+      
+      DC = Hadamard_prod(mat_mul(D,D.T),K_cc)
+      Sigma = DC+lam*self.n_samples*M
+
+      while(res>thre and itr < max_itr):
+      #for _ in range(1000):
+        itr += 1
+        new_alpha = alpha - 2*step*(-m1+Sigma.dot(alpha))/(self.n_samples)
+        res = jnp.linalg.norm(2*step*(-m1+Sigma.dot(alpha))/(self.n_samples))
+        alpha = new_alpha
+      print('itr:', itr)
+
     #simplified version
     
     self.alpha = alpha

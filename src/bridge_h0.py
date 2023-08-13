@@ -72,31 +72,41 @@ class Bridge_h0:
       
       K_q = Sigma[select_id, :][:, select_id]
       #evaluate the spectrum of K
-      v, uh = jnp.linalg.eigh(Sigma)
-      num_id = jnp.where(jnp.abs(v)>1e-5)[0]
-      print("eigenvalue greater than 1e-5: ", num_id.size, n_sample)
+      #v, uh = jnp.linalg.eigh(Sigma)
+      #num_id = jnp.where(jnp.abs(v)>1e-5)[0]
+      #print("eigenvalue greater than 1e-5: ", num_id.size, n_sample)
 
 
       K_nq = Sigma[:, select_id]
       
-      inv_Kq = jsla.solve(K_q+1e-5*jnp.eye(q), jnp.eye(q), assume_a='pos')
-      if jnp.isnan(inv_Kq).any():
-        print("inv_Kq is nan 1")
-      
+      #inv_Kq = jsla.solve(K_q+1e-5*jnp.eye(q), jnp.eye(q), assume_a='pos')
+      #if jnp.isnan(inv_Kq).any():
+      #  print("inv_Kq is nan 1")
+
+      inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
+      Q = K_nq.dot(inv_Kq_sqrt)
+
+      print('kernel approximation error:', jnp.linalg.norm(Sigma - Q.dot(Q.T)))
+
       #inversion method 1
-      inv_K = jsla.solve(lam*n_sample*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
+      #inv_K = jsla.solve(lam*n_sample*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
       #inv_Kq = jsla.solve(lam*n_sample*K_q + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
       #inversion method 2
       #inv_K = jsla.solve(lam*n_sample*jnp.eye(q) + mat_mul(inv_Kq, mat_mul(K_nq.T, K_nq)) , jnp.eye(q))
       
-      if jnp.isnan(inv_K).any():
-        print("inv_K is nan 2")
+      #if jnp.isnan(inv_K).any():
+      #  print("inv_K is nan 2")
       #inversion method 1
-      aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), K_nq.T))/(lam*n_sample)
+      #aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), K_nq.T))/(lam*n_sample)
       #inversion methos 2
       #aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), mat_mul(inv_Kq, K_nq.T)))/(lam*n_sample)
 
-      vec_alpha = mat_mul(aprox_K, Y)
+      inv_temp = jsla.solve(lam*n_sample*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
+      if jnp.isnan(inv_temp).any():
+        print("inv_temp is nan")         
+      aprox_K = (jnp.eye(n_sample)-(Q.dot(inv_temp)).dot(Q.T))/(lam*n_sample)
+
+      vec_alpha = aprox_K.dot(Y)
     elif method == 'cg':
       print('use conjugate gradeint to estimate h0')
       #using conjugate gradient descent

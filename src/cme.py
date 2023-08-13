@@ -121,15 +121,11 @@ class ConditionalMeanEmbed:
       #num = np.where(np.abs(u)>1e-5)[0].size
       #print('ratio of eigenvalues greater than 1e-5:', num/self.n_samples)
 
-      u,vh = jnp.linalg.eigh(K_q)
-      select_id = np.where(np.abs(u)>1e-5)[0]
-      new_u = u[select_id]
-      new_vh = vh[:, select_id]
-      inv_Kq_sqrt = np.matmul(new_vh/np.sqrt(new_u),new_vh.T)
+      inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
 
       Q = K_nq.dot(inv_Kq_sqrt)
 
-      print('kernel approximation error:', jnp.linalg.norm(self.K_XX - Q.dot(Q.T)))
+      #print('kernel approximation error:', jnp.linalg.norm(self.K_XX - Q.dot(Q.T)))
       
       #inv_Kq = jnp.linalg.inv(K_q)
       #if jnp.isnan(inv_Kq).any():
@@ -151,7 +147,7 @@ class ConditionalMeanEmbed:
       inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
       if jnp.isnan(inv_temp).any():
         print("inv_temp is nan")         
-      self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(Q.dot(inv_temp), Q.T))/(self.lam*self.n_samples)
+      self.aprox_K_XX = (jnp.eye(self.n_samples)-(Q.dot(inv_temp)).dot(Q.T))/(self.lam*self.n_samples)
 
       # for inversion method 2
       # self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(mat_mul(K_nq, inv_K), mat_mul(inv_Kq, K_nq.T)))/(lam*self.n_samples)      
@@ -160,7 +156,7 @@ class ConditionalMeanEmbed:
       Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
       inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
 
-      print('distance: ', jnp.linalg.norm(inv_Gx-self.aprox_K_XX))
+      #print('distance: ', jnp.linalg.norm(inv_Gx-self.aprox_K_XX))
       
   def lam_selection(self):
     """
@@ -202,17 +198,17 @@ class ConditionalMeanEmbed:
 
       #use Nystrom approximation
     if self.method == 'nystrom':
-      print('use Nystrom method to estimate cme')
+      #print('use Nystrom method to estimate cme')
       Gamma = self.aprox_K_XX.dot(Phi_Xnx)
     elif self.method == 'cg':
-      print('use conjugate gradient to estimate cme')
+      #print('use conjugate gradient to estimate cme')
       #use conjugate gradient descent
       Gx = Gx.at[jnp.abs(Gx)<1e-5].set(0.0)
       fn = lambda x: jax.scipy.sparse.linalg.cg(Gx, x)[0]
       v = vmap(fn, 1)
       Gamma = v(Phi_Xnx).T
     else:
-      print('use linear solver to estimate cme')
+      #print('use linear solver to estimate cme')
       #print(self.X_list)
       #Gamma= jsla.solve(Gx, Phi_Xnx, assume_a='pos') #shape=(n1_samples, n2_samples),
       Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)

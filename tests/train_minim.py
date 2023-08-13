@@ -28,7 +28,7 @@ seed_list = {}
 sd_lst= [5949, 7422, 4388, 2807, 5654, 5518, 1816, 1102, 9886, 1656, 4379,
        2029, 8455, 4987, 4259, 2533, 9783, 7987, 1009, 2297]
 data_list = {}
-n = 20000
+n = 40000
 for sd in sd_lst[:4]:
   seed=[]
   seed1=sd+5446
@@ -88,7 +88,7 @@ def gen_U_target(n,key):
     return U1, U2
 
 target_data_list = {}
-n = 10000
+n = 40000
 for sd in sd_lst[:6]:
   seed=[]
   seed1=sd+5446
@@ -138,13 +138,16 @@ for sd in sd_lst[:6]:
 
 # training on the source domain
 n_list = [700, 1000,1500,2000,3000,5000,7000,10000]
-n_list = [100,200, 500,700,1000,1500,2000, 2500,3000,4000]#,5000,7000,10000]
+n_list = [100,200, 500,700,1000,1500,2000, 2500,3000,4000,5000,
+          7000,10000,11000,12000,15000,17000,20000,22000,25000,
+          27000,30000, 35000, 40000]
 #n_list = [1000]
 #specify esitmation method
 cme_method = 'nystrom'
 h0_method  = 'nystrom' #'original'
-m0_method  = 'gradient'
-index = 'nng_beta-4000_1'
+m0_method  = 'nystrom'
+index = 'nnn_beta_cap1000_40k'
+cap = 1000
 data_list.keys()
 source_error_list = []
 source_error_fapp_list = []
@@ -187,10 +190,9 @@ for id, n in enumerate(n_list):
   # [Partial Identification] key=2807, estimate m0^p
   data4 = data_list[2807]
   covars = {}
-  covars['X'] = data4['X'][0:n,:]
-  covars['C'] = data4['C'][0:n]
-
-  #m0_p = CME_m0_approx(cme_W_X_p, covars, lam, scale)
+  n2 = min(cap, n)
+  covars['X'] = data4['X'][0:n2,:]
+  covars['C'] = data4['C'][0:n2]
   
   m0_p = CME_m0_ver2(cme_W_X_p, covars, lam2, scale,  method=m0_method)
 
@@ -286,8 +288,9 @@ for n in n_list:
   # [Partial Identification] key=2807, estimate m0^p
   data4 = target_data_list[2807]
   covars = {}
-  covars['X'] = data4['X'][0:n,:]
-  covars['C'] = data4['C'][0:n]
+  n2 = min(n, cap)
+  covars['X'] = data4['X'][0:n2,:]
+  covars['C'] = data4['C'][0:n2]
 
   m0_q = CME_m0_ver2(cme_W_X_q, covars, lam, scale,  method=m0_method)
 
