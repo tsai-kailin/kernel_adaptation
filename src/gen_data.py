@@ -29,6 +29,12 @@ def gen_W(U1,U2, m_w, v_w, n,  key):
     W2= U2+ (random.normal(key[1],(n,)) *v_w[1])+m_w[1]
 
     return W1, W2
+
+
+def gen_W_benchmark(U1,U2, m_w, v_w, n,  key):
+    W1= U1+ (random.normal(key[1],(n,)) *v_w[0])+m_w[1]
+    W2= U2+ (random.normal(key[1],(n,)) *v_w[1])+m_w[1]
+    return U1, U2
 """
 def gen_C(U1,U2,X1,X2, beta, n, key):
   C= U2 + random.normal(key,(n,)) * beta + U1*X2
@@ -47,24 +53,46 @@ def gen_C(U1,U2,X1,X2, beta, n, key):
     return C
 """
 #def gen_C(U1,U2,X1,X2, beta, n, key):
-#    #work dgp2#
+    #work dgp2#
 #    C= U2 + random.normal(key,(n,)) * beta
 #    return C
 
 #def gen_C(U1,U2,X1,X2, beta, n, key):
+    #dominate by X is difficult
 #    C= X1+X2*random.normal(key,(n,)) * beta
 #    return C
 
-def gen_C(U1,U2,X1,X2, beta, n, key):
-    C= U2+U1*np.cos(2*X1) + random.normal(key,(n,)) * beta
-    return C
+#def gen_C(U1,U2,X1,X2, beta, n, key):
+#    C= U2+U1*np.cos(2*X1) + random.normal(key,(n,)) * beta
+#    return C
 
 #def gen_C(U1,U2,X1,X2, beta, n, key):
 #  C= U2 + random.normal(key,(n,)) * beta + U1*X2
 #  return C
+
 #def gen_C(U1,U2,X1,X2, beta, n, key):
-#     #work dgp1
+    #dont work 
+#    C= X1*np.cos(U1*.3)+U2*random.normal(key,(n,)) * beta
+#    return C
+
+#def gen_C(U1,U2,X1,X2, beta, n, key):
+     
+#    C= np.sin(X1*.1)+np.cos(U2)+random.normal(key,(n,)) * beta
+#    return C
+
+#def gen_C(U1,U2,X1,X2, beta, n, key):
+     #work dgp1
 #    C= X1*X2 + np.cos(U1*.3)+U2*random.normal(key,(n,)) * beta
+#    return C
+
+def gen_C(U1,U2,X1,X2, beta, n, key):
+    #work dgp9
+    C= np.log(X1*X1) + np.cos(U1*.3)+U2*random.normal(key,(n,)) * beta
+    return C
+
+#def gen_C(U1,U2,X1,X2, beta, n, key):
+#    #work dgp1
+#    C = np.cos(U1*.3)+U2*random.normal(key,(n,)) * beta
 #    return C
 def gen_Y(C, U1, U2, n):
   mask =  (U1*U2 > 0)

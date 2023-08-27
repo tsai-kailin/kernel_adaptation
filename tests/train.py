@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 sys.path.append('../src/')
 from bridge_h0 import Bridge_h0
-from bridge_m0 import CME_m0_ver2
+from bridge_m0 import CME_m0_cme
 from cme import ConditionalMeanEmbed
 from gen_data import *
 from utils import *
@@ -78,17 +78,28 @@ for sd in sd_lst[:4]:
 #generate data from target domain
 def gen_U_target(n,key):
     #e1=random.uniform(key[0],(n,),minval=0,maxval=1)
-    e1= -2*random.beta(key[0],1,3,(n,))
+    """
+    e1= -1*random.beta(key[0],1,3,(n,))
     U2= random.beta(key[0],5,1,(n,))
     e3= np.where((U2>1),0,-1)
     e4= np.where((U2<0),0,-1)
     e5=(e3+e4)
     U1=e1 #+e5+1
+    """
+    #return U1, U2
+    
+
+    e1=0.5*random.uniform(key[0],(n,),minval=0,maxval=1)
+    U2=(3*random.uniform(key[1],(n,),minval=0,maxval=1)-1)*0.5
+    e3= np.where((U2>1),0,-1)
+    e4= np.where((U2<0),0,-1)
+    e5=(e3+e4)
+    U1=e1+e5+1
 
     return U1, U2
-
+    
 target_data_list = {}
-n = 10000
+n = 20000
 for sd in sd_lst[:6]:
   seed=[]
   seed1=sd+5446
@@ -137,14 +148,14 @@ for sd in sd_lst[:6]:
 
 
 # training on the source domain
-n_list = [700, 1000,1500,2000,3000,5000,7000,10000]
-n_list = [100,200, 500,700,1000,1500,2000, 2500,3000,4000]#,5000,7000,10000]
+
+n_list = [100,200, 500,700,1000,1500,2000, 2500,3000,4000,5000,7000,10000]#, 12000, 15000]#, 20000, 22000,25000,28000,30000,32000,35000,40000]
 #n_list = [1000]
 #specify esitmation method
-cme_method = 'nystrom'
-h0_method  = 'nystrom' #'original'
-m0_method  = 'gradient'
-index = 'nng_beta-4000_1'
+cme_method = 'original'
+h0_method  = 'original' #'original'
+m0_method  = 'original'
+index = 'ooo_beta_1e_2_gen9_nt'
 data_list.keys()
 source_error_list = []
 source_error_fapp_list = []
@@ -152,11 +163,12 @@ source_estimator_list = []
 source_error_fappm0_list = []
 ini_alpha = None
 scale=1.
+lam = 1e-2 #1e-3
+lam2 = 1e-2
 for id, n in enumerate(n_list):
   est = {}
 
-  lam = 1e-3 #1e-3
-  lam2 = 1e-3
+
 
   # key=5949, estimate mu^p_{w|x,c}
   # construct covars
@@ -192,7 +204,7 @@ for id, n in enumerate(n_list):
 
   #m0_p = CME_m0_approx(cme_W_X_p, covars, lam, scale)
   
-  m0_p = CME_m0_ver2(cme_W_X_p, covars, lam2, scale,  method=m0_method)
+  m0_p = CME_m0_cme(cme_W_X_p, covars, lam2, scale,  method=m0_method)
 
 
   # key=7422, estimate h0^p
@@ -258,8 +270,6 @@ target_estimator_list = []
 
 
 for n in n_list:
-  lam = 1e-3
-  lam = 1e-3
   # key=2807 estimate mu_{w|x,c}^q)
   # construct covars
   data1 = target_data_list[2807]
@@ -289,7 +299,7 @@ for n in n_list:
   covars['X'] = data4['X'][0:n,:]
   covars['C'] = data4['C'][0:n]
 
-  m0_q = CME_m0_ver2(cme_W_X_q, covars, lam, scale,  method=m0_method)
+  m0_q = CME_m0_cme(cme_W_X_q, covars, lam2, scale,  method=m0_method)
 
 
   #seed 5654 estimate bridge

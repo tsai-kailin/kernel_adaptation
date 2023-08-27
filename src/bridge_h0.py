@@ -86,7 +86,7 @@ class Bridge_h0:
       inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
       Q = K_nq.dot(inv_Kq_sqrt)
 
-      print('kernel approximation error:', jnp.linalg.norm(Sigma - Q.dot(Q.T)))
+      #print('kernel approximation error:', jnp.linalg.norm(Sigma - Q.dot(Q.T)))
 
       #inversion method 1
       #inv_K = jsla.solve(lam*n_sample*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
@@ -106,7 +106,7 @@ class Bridge_h0:
         print("inv_temp is nan")         
       aprox_K = (jnp.eye(n_sample)-(Q.dot(inv_temp)).dot(Q.T))/(lam*n_sample)
 
-      vec_alpha = aprox_K.dot(Y)
+      vec_alpha = mat_mul(aprox_K, Y)
     elif method == 'cg':
       print('use conjugate gradeint to estimate h0')
       #using conjugate gradient descent

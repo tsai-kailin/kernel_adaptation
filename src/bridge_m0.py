@@ -426,6 +426,10 @@ class CME_m0_ver2(CME_m0):
     return params
 
 
+
+
+
+
   def __call__(self, new_c, Cw_x, new_x):
 
     params = self.get_A_operator(Cw_x, new_x)
@@ -438,3 +442,127 @@ class CME_m0_ver2(CME_m0):
 
 
 
+
+
+class CME_m0_cme:
+  """ Construct conditonal mean embedding that embeds the bridge function m0.
+  Double conditional mean embedding.
+  """
+  def __init__(self, Cw_x, covars, lam, scale=1., q=None, method='original'):
+    """
+    Args:
+      Cw_x: ConditionalMeanEmbed, object
+      covars: dictionary of covariates, dict
+      lam: tuning parametier, float
+      scale: kernel length-scale, float
+      q: rank of the matrix, when Nystrom approximation is used, int
+      method: method, "original" or "nystrom"
+    """
+    self.method = method
+    self.sc = scale
+
+    self.Cw_x = Cw_x
+    params = Cw_x.get_params()
+    
+    self.W = params['Y']
+    self.w_sc = params['scale']
+    
+    covarsx = {}
+    covarsx['X'] = covars['X']
+    K_ww = ker_mat(jnp.array(self.W), jnp.array(self.W), params['scale'])
+    self.Gamma_x = Cw_x.get_mean_embed(covarsx)["Gamma"]
+
+    kx_g_kx = mat_mul(self.Gamma_x.T, mat_mul(K_ww, self.Gamma_x))
+
+    self.X = covars['X']
+   
+    K_xx = ker_mat(jnp.array(self.X), jnp.array(self.X), self.sc)
+    #build the kernel matrix
+    self.K_gram =  Hadamard_prod(K_xx, kx_g_kx)
+    self.C = covars['C']
+    self.n_samples = self.C.shape[0]
+    self.lam = lam
+
+
+    if self.method=='nystrom':
+      # set rank
+      if q == None:
+        q = min(250, self.n_samples)
+      
+      # set selected indices
+      if q < self.n_samples: 
+        select_x = np.random.choice(self.n_samples, q, replace=False)
+      else:
+        select_x = np.aranges(self.n_samples)
+
+      K_q = self.K_gram[select_x, :][:, select_x]
+      K_nq = self.K_gram[:, select_x]
+
+      inv_Kq_sqrt = jnp.array(truncate_sqrtinv(K_q))
+      Q = mat_mul(K_nq, inv_Kq_sqrt)
+
+
+      inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
+      if jnp.isnan(inv_temp).any():
+        print("inv_temp is nan")         
+      self.aprox_K_gram_inv = (jnp.eye(self.n_samples)-(Q.dot(inv_temp)).dot(Q.T))/(self.lam*self.n_samples)
+
+    elif self.method=='original':
+      self.K_gram_inv = jsla.solve(self.lam*self.n_samples*jnp.eye(self.n_samples)+self.K_gram, jnp.eye(self.n_samples))
+
+
+  def get_mean_embed(self, Cw_x, new_x):
+    """
+    Args:
+      Cw_x: ConditionalMeanEmbed, object
+      new_x: shape (n2_samples, n2_features)
+    """
+    
+    # compute the gram matrix
+    K_Xnewx = ker_mat(jnp.array(self.X), jnp.array(new_x['X']), self.sc)
+    
+    
+    params1 = Cw_x.get_mean_embed(new_x)
+    Gamma1_newx = params1["Gamma"] #(n_samples, n6_samples)
+    W1 = params1["Y"]
+
+    K_w1w2 = ker_mat(jnp.array(self.W), jnp.array(W1), self.w_sc) #(n_samples, n'_samples)
+    kx_g_knewx = mat_mul(mat_mul(self.Gamma_x.T, K_w1w2), Gamma1_newx) #(n5_samples, n6_samples)
+
+    G_x = Hadamard_prod(K_Xnewx, kx_g_knewx)
+
+    if self.method == 'nystrom':
+      Gamma = mat_mul(self.aprox_K_gram_inv, G_x)
+    elif self.method == 'original':
+      Gamma = mat_mul(self.K_gram_inv, G_x)
+
+    return Gamma
+
+
+
+  def get_A_operator(self, Cw_x, new_x):
+    """ return \sum_i beta_i(new_x)\phi(c_i)
+    Args:
+      Cw_x: ConditionalMeanEmbed object
+      new_x: shape (n2_samples, n2_features)
+    Returns:
+    beta: shape (n2_samples, n_samples)
+    """
+    beta = self.get_mean_embed(Cw_x, new_x).T
+    params = {}
+    params["C"]=self.C
+    params["scale"] = self.sc
+    params["beta"] = beta
+    return params
+
+
+
+  def __call__(self, new_c, Cw_x, new_x):
+
+    params = self.get_A_operator(Cw_x, new_x)
+    K_Cnewc = ker_mat(jnp.array(self.C), jnp.array(new_c), self.w_sc) #(n5_samples, n2_samples)
+    return Hadamard_prod(params['beta'].T, K_Cnewc).sum(axis=0)
+
+  def get_coefs(self, Cw_x, new_x):
+    params = self.get_A_operator(Cw_x, new_x)
+    return params['beta'].T #(n5_samples, n2_samples)

@@ -87,82 +87,31 @@ class ConditionalMeanEmbed:
         q = min(250, self.n_samples)
       if q < self.n_samples:
         select_x = np.random.choice(self.n_samples, q, replace=False)
-        #select_x = np.arange(q)
-        #unselect_x = np.array(list(set(np.arange(self.n_samples)) - set(select_x)))
-        #reorder_x = np.concatenate((select_x, unselect_x))
+
       else:
         select_x = np.arange(self.n_samples)
         #reorder_x = np.arange(self.n_samples)
-      """
-      
-      K_nq = jnp.ones((self.n_samples, q))
-      for key in self.X_list:
-        x = X[key]
-        if len(x.shape) > 1:
-          temp = ker_mat(jnp.array(x), jnp.array(x[select_x,:]), self.sc) 
-        else:
-          temp = ker_mat(jnp.array(x), jnp.array(x[select_x]), self.sc) 
-        K_nq = Hadamard_prod(K_nq, temp)
-
-      K_q = jnp.ones((q, q))
-      for key in self.X_list:
-        x = X[key]
-        if len(x.shape) > 1:
-          temp = ker_mat(jnp.array(x[select_x,:]), jnp.array(x[select_x,:]), self.sc) 
-        else:
-          temp = ker_mat(jnp.array(x[select_x]), jnp.array(x[select_x]), self.sc) 
-      K_q = Hadamard_prod(K_q, temp)   
-      """
       K_q = self.K_XX[select_x, :][:, select_x]
       K_nq = self.K_XX[:, select_x]
 
-      # evaluate the spectrum of the K_XX
-      #u,vh = jnp.linalg.eigh(self.K_XX)
-      #num = np.where(np.abs(u)>1e-5)[0].size
-      #print('ratio of eigenvalues greater than 1e-5:', num/self.n_samples)
 
       inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
 
       Q = K_nq.dot(inv_Kq_sqrt)
 
-      #print('kernel approximation error:', jnp.linalg.norm(self.K_XX - Q.dot(Q.T)))
       
-      #inv_Kq = jnp.linalg.inv(K_q)
-      #if jnp.isnan(inv_Kq).any():
-      #  print("inv_Kq is nan 1")
-      
-      #inversion method 1
-      #inv_K = jnp.linalg.inv(self.lam*self.n_samples*inv_Kq + K_nq.T.dot(K_nq))#, jnp.eye(q), assume_a='pos')
-      #inversion method 2
-      #inv_K = jsla.solve(lam*self.n_samples*jnp.eye(q) + mat_mul(inv_Kq, mat_mul(K_nq.T, K_nq)), jnp.eye(q))
-    
-      #following is unstable
-      #inv_K = jsla.solve(lam*self.n_samples*K_q + mat_mul(K_nq.T, K_nq), jnp.eye(q))
-      #if jnp.isnan(inv_K).any():
-      #  print("inv_K is nan 2")   
-      # for inversion method 1
-      #self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(K_nq.dot(inv_K), K_nq.T))/(self.lam*self.n_samples)
-      
-      
-      inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
+      inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+mat_mul(Q.T,Q), jnp.eye(q))
       if jnp.isnan(inv_temp).any():
         print("inv_temp is nan")         
-      self.aprox_K_XX = (jnp.eye(self.n_samples)-(Q.dot(inv_temp)).dot(Q.T))/(self.lam*self.n_samples)
+      self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(mat_mul(Q, inv_temp), Q.T))/(self.lam*self.n_samples)
 
-      # for inversion method 2
-      # self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(mat_mul(K_nq, inv_K), mat_mul(inv_Kq, K_nq.T)))/(lam*self.n_samples)      
-      
       # evaluation
-      Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
-      inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
+      #Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
+      #inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
 
       #print('distance: ', jnp.linalg.norm(inv_Gx-self.aprox_K_XX))
       
-  def lam_selection(self):
-    """
-    """
-    #TODO: implement leave-one-out method to select lambda
-    pass
+
   def get_params(self):
     """Return parameters.
     """
@@ -215,6 +164,7 @@ class ConditionalMeanEmbed:
       inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
       Gamma = inv_Gx.dot(Phi_Xnx)
     
+
     evaluate = False
     if evaluate:
       Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
