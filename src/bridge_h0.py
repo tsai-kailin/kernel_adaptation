@@ -13,14 +13,18 @@ class Bridge_h0:
       Gamma_xc = mu_w_cx.get_mean_embed(x,c)['Gamma'] #(n1_samples, n2_samples)
       \Sigma = (Gamma_xc^T K_ww Gamma_xc)K_cc
   """
-  def __init__(self, Cw_xc, covars, Y, lam, scale=1.,x0=None, method='original'):
+  def __init__(self, Cw_xc, covars, Y, lam, scale=1., method='original', lam_min=-4, lam_max=-1):
     """Initiate the parameters
     Args:
       Cw_xc: object, ConditionalMeanEmbed
       covars: covariates, dict {"C": ndarray shape=(n2_samples, n1_features), "X": ndarray shape=(n2_samples, n2_features)}
       Y: labels, (n2_samples,)
       lam: reuglarization parameter, lam
-      scale: kernel length scale
+      scale: kernel length scale, float
+      method: approximation method, str
+      'original' for linear solver, 'nystrom' for Nystrom approximation
+      lam_min: minimum of lambda (log space) for hyperparameter tuning, float
+      lam_max: maximum of lambda (log space) for hyperparameter tuning, float
     """
     t1 = time.time()
     self.sc = scale
@@ -43,14 +47,13 @@ class Bridge_h0:
 
     # construct sigma
     Sigma = Hadamard_prod(mat_mul(mat_mul(Gamma_xc.T, K_WW), Gamma_xc), K_CC)
-
-
-
-    #plt.plot(jnp.linalg.eigvalsh(mat_mul(D.T,D)))
-    #u, vh = jsla.eigh(Sigma)
-    #idx = jnp.where(u>1e-6)[0]
-    #u2 = 1./(u[idx]+n_sample*lam)
-    #F = mat_mul(vh[:,idx]*u2, vh[:,idx].T)
+    
+    if lam == None:
+      #implement parameter selection
+      D_t = modif_kron(mat_mul(K_WW, Gamma_xc), K_CC) 
+      mk_gamma_I=mat_trans(modif_kron(Gamma_xc, jnp.eye(n_sample)))
+      lam, loo2 = cal_l_yw(D_t, Sigma, mk_gamma_I , Y, lam_min, lam_max)
+      print('selected lam of h_0:', lam)
 
 
     #print("rank of sigma", jnp.linalg.matrix_rank(Sigma))
@@ -71,35 +74,11 @@ class Bridge_h0:
       select_id = np.random.choice(n_sample, q, replace=False)
       
       K_q = Sigma[select_id, :][:, select_id]
-      #evaluate the spectrum of K
-      #v, uh = jnp.linalg.eigh(Sigma)
-      #num_id = jnp.where(jnp.abs(v)>1e-5)[0]
-      #print("eigenvalue greater than 1e-5: ", num_id.size, n_sample)
-
-
       K_nq = Sigma[:, select_id]
       
-      #inv_Kq = jsla.solve(K_q+1e-5*jnp.eye(q), jnp.eye(q), assume_a='pos')
-      #if jnp.isnan(inv_Kq).any():
-      #  print("inv_Kq is nan 1")
 
       inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
       Q = K_nq.dot(inv_Kq_sqrt)
-
-      #print('kernel approximation error:', jnp.linalg.norm(Sigma - Q.dot(Q.T)))
-
-      #inversion method 1
-      #inv_K = jsla.solve(lam*n_sample*inv_Kq + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
-      #inv_Kq = jsla.solve(lam*n_sample*K_q + mat_mul(K_nq.T, K_nq), jnp.eye(q), assume_a='pos')
-      #inversion method 2
-      #inv_K = jsla.solve(lam*n_sample*jnp.eye(q) + mat_mul(inv_Kq, mat_mul(K_nq.T, K_nq)) , jnp.eye(q))
-      
-      #if jnp.isnan(inv_K).any():
-      #  print("inv_K is nan 2")
-      #inversion method 1
-      #aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), K_nq.T))/(lam*n_sample)
-      #inversion methos 2
-      #aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_K), mat_mul(inv_Kq, K_nq.T)))/(lam*n_sample)
 
       inv_temp = jsla.solve(lam*n_sample*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
       if jnp.isnan(inv_temp).any():
@@ -107,54 +86,16 @@ class Bridge_h0:
       aprox_K = (jnp.eye(n_sample)-(Q.dot(inv_temp)).dot(Q.T))/(lam*n_sample)
 
       vec_alpha = mat_mul(aprox_K, Y)
-    elif method == 'cg':
-      print('use conjugate gradeint to estimate h0')
-      #using conjugate gradient descent
-      F = F.at[jnp.abs(F)<1e-5].set(0.0)
-      sparse_F = ss.csr_matrix(np.array(F))
-      vec_alpha, exit_code = ss.linalg.cg(sparse_F, np.array(Y), x0)
-      print('solve status:', exit_code)
-      vec_alpha = jnp.array(vec_alpha)
-    else:
+
+    elif method == 'original':
       print('use linear solver to estimate h0')
       vec_alpha = jsla.solve(F, Y)
     
-    #use Nystrom approximation method
-    """
-    q = min(5*int(np.sqrt(n_sample)), int(n_sample/10))
-    select_id = np.random.choice(n_sample, q, replace=True)
-
-    K_qC = ker_mat(jnp.array(C[select_id]), jnp.array(select_id), self.sc)
-    K_qW_XC = jnp.ones((q, q))
-    q_covars = {}
-    for key in covars.keys():
-      d = covars[key]
-      if len(d.shape)>1:
-        q_covars[key] = d[select_id,:]
-      else:
-        q_covars[key] = d[select_id]
-    
-    Gamma_qxc = Cw_xc.get_mean_embed(q_covars)["Gamma"]
-    K_qW_XC = mat_mul(mat_mul(Gamma_qxc.T, K_WW), Gamma_qxc)
-    K_q = Hadamard_prod(K_qC, K_qW_XC)
-    
-
-    K_nqC = ker_mat(jnp.array(C), jnp.array(select_id), self.sc)
-    K_nqW_XC = mat_mul(mat_mul(Gamma_xc.T, K_WW), Gamma_qxc)
-    K_nq = Hadamard_prod(K_nqC, K_nqW_XC)
-
-    inv_Kq = jsla.solve(lam*n_sample*jsla.solve(K_q, jnp.eye(q)) + mat_mul(K_nq.T, K_nq), jnp.eye(q))
-    aprox_K = (jnp.eye(n_sample)-mat_mul(mat_mul(K_nq, inv_Kq), K_nq.T))/(lam*n_sample)
-    vec_alpha = mat_mul(aprox_K, Y)
-    """
     t25 = time.time()
-    #slower method
-    #G = katri_rao_col(Gamma_xc,  jnp.eye(n_sample))
-    #vec_alpha = mat_mul(G, vec_alpha)
 
-    #faster method
     
     vec_alpha = stage2_weights(Gamma_xc, vec_alpha)
+    
     t3 = time.time()
     print("processing time: matrix preparation:%.4f solving inverse:%.4f, %.4f"%(t2-t1, t25-t2, t3-t25))
     self.alpha = vec_alpha.reshape((-1, n_sample)) #shape=(n1_sample, n2_sample)
@@ -186,7 +127,7 @@ class Bridge_h0:
       new_x: ndarray shape=(n4_samples, n_features)
       cme_WC_x: ConditionalMeanEmbed
     """
-    #TODO
+
     t1 = time.time()
     params = cme_WC_x.get_mean_embed(new_x)
     t2 = time.time()

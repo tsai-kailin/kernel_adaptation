@@ -6,33 +6,6 @@ import jax.scipy.linalg as jsla
 import scipy
 
 
-def leverage_scores(K, q, lam):
-    """
-    code adapted from: 
-    C. Williams and M. Seeger, "Using the Nystrom method to speed up kernel machines," in Proceedings of the 14th Annual Conference on Neural Information Processing Systems, 2001, no. EPFL-CONF.161322, pp. 682-688.
-
-    A. Alaoui and M. Mahoney, "Fast Randomized Kernel Methods With Statistical Guarantees", arXiv, 2001.
-
-    Compute leverage scores for matrix K and regularization parameter lbd.
-
-    :param K: (``numpy.ndarray``) or of (``Kinterface``). The kernel to be approximated with G.
-
-    :return: (``numpy.ndarray``) a vector of leverage scores to determine a sampling distribution.
-    """
-    dg = jnp.diag(K) 
-    #print(dg)
-    pi = dg / np.sum(dg)
-    #print(pi, np.sum(pi))
-    n = K.shape[0]
-    linxs = np.random.choice(range(n), size=q, replace=True)
-    C = K[:, linxs]
-    W = C[linxs, :]
-    B = C.dot(np.real(scipy.linalg.sqrtm(W)))
-    BTB = B.T.dot(B)
-    BTBi = np.linalg.inv(BTB + n * lam * np.eye(q, q))
-    l = np.array([B[i, :].dot(BTBi).dot(B[i, :]) for i in range(n)])
-    return l / np.sum(l)
-
 class ConditionalMeanEmbed:
   """function class of conditional mean embedding
     C(Y|X) = Phi_Y(K_XX+lam*n1_samples*I)^{-1}Phi_X
@@ -55,22 +28,32 @@ class ConditionalMeanEmbed:
     new_y = jax.random.normal(key2, shape=(n3_samples,))
     C_YX(new_y, new_x)
   """
-  def __init__(self, Y, X, lam, scale=1, method='original', q=None):
+  def __init__(self, Y, X, lam, scale=1, method='original', q=None, l_min=-4, l_max=-1):
     """ initiate the parameters
       Args:
         Y: dependent variables, ndarray shape=(n1_samples, n2_features)
         X: independent varaibles, dict {"Xi": ndarray shape=(n1_samples, n1_features)}
         lam: regularization parameter
         scale: kernel length scale
+        method: approximation method, str
+        'orginal' for linear solver, 'nystrom' for  Nystrom approximation
+        q: number of components to sample if NYstrom approximation is used, int
+        lam_min: minimum of lambda (log space) for hyperparameter tuning, float
+        lam_min: maximum of lambda (log space) for hyperparameter tuning, float
     """
     self.n_samples = Y.shape[0]
     self.X_list = list(X.keys())
     self.X = X
     self.Y = Y
-    assert(lam >= 0.)
+    #assert(lam >= 0.)
     self.lam = lam
     self.sc = scale
     self.method = method
+    #check method is correctly specified
+    if self.method != 'original':
+      if self.method != 'nystrom':
+        raise Exception("method specified not implemented please select again")
+
     # construct of gram matrix
     K_XX = jnp.ones((self.n_samples, self.n_samples))
     for key in self.X_list:
@@ -79,6 +62,18 @@ class ConditionalMeanEmbed:
 
       K_XX= Hadamard_prod(K_XX, temp)
     self.K_XX = K_XX
+
+
+
+
+    #select lambda
+    if (self.lam == None):
+      K_YY = ker_mat(jnp.array(self.Y), jnp.array(self.Y), self.sc)
+      scale_dict = {}
+      l_w, loo1 = cal_l_w(K_XX, K_YY, low=lam_min, high=lam_max, n=10)
+      print('selected lam of cme:', l_w)
+      self.lam = l_w
+
 
     #compute Nystrom approximation
     if self.method=='nystrom':
@@ -96,20 +91,19 @@ class ConditionalMeanEmbed:
 
 
       inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
-
-      Q = K_nq.dot(inv_Kq_sqrt)
+      Q = mat_mul(K_nq, inv_Kq_sqrt)
 
       
-      inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+mat_mul(Q.T,Q), jnp.eye(q))
+      inv_temp = jsla.solve(self.lam*self.n_samples*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
       if jnp.isnan(inv_temp).any():
         print("inv_temp is nan")         
-      self.aprox_K_XX = (jnp.eye(self.n_samples)-mat_mul(mat_mul(Q, inv_temp), Q.T))/(self.lam*self.n_samples)
+      self.aprox_K_XX = (jnp.eye(self.n_samples)-(Q.dot(inv_temp)).dot(Q.T))/(self.lam*self.n_samples)
 
-      # evaluation
-      #Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
-      #inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
 
-      #print('distance: ', jnp.linalg.norm(inv_Gx-self.aprox_K_XX))
+    elif self.method == 'original':
+      Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
+      inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
+      self.inv_Gx = inv_Gx      
       
 
   def get_params(self):
@@ -137,32 +131,16 @@ class ConditionalMeanEmbed:
     for key in self.X_list:
       temp = ker_mat(jnp.array(self.X[key]), jnp.array(new_x[key]), self.sc)
       Phi_Xnx = Hadamard_prod(Phi_Xnx, temp)
-
-    #Gamma = (K_XX+lam*n1_samples*I)^{-1}Phi_X(new_x)
-    #print("GX is pd",is_pos_def(Gx))
-    #if self.n_samples < 1000:
-      #direct solver
     
     
 
-      #use Nystrom approximation
+    # use Nystrom approximation
     if self.method == 'nystrom':
-      #print('use Nystrom method to estimate cme')
+      # print('use Nystrom method to estimate cme')
       Gamma = self.aprox_K_XX.dot(Phi_Xnx)
-    elif self.method == 'cg':
-      #print('use conjugate gradient to estimate cme')
-      #use conjugate gradient descent
-      Gx = Gx.at[jnp.abs(Gx)<1e-5].set(0.0)
-      fn = lambda x: jax.scipy.sparse.linalg.cg(Gx, x)[0]
-      v = vmap(fn, 1)
-      Gamma = v(Phi_Xnx).T
-    else:
-      #print('use linear solver to estimate cme')
-      #print(self.X_list)
-      #Gamma= jsla.solve(Gx, Phi_Xnx, assume_a='pos') #shape=(n1_samples, n2_samples),
-      Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
-      inv_Gx = jsla.solve(Gx, jnp.eye(self.n_samples), assume_a='pos')
-      Gamma = inv_Gx.dot(Phi_Xnx)
+
+    elif self.method == 'original':
+      Gamma = mat_mul(self.inv_Gx, Phi_Xnx)
     
 
     evaluate = False
