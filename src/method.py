@@ -1,5 +1,19 @@
 import jax.numpy as jnp
 
+
+def split_data_widx(data, split_index):
+    sub_data = {}
+    keys = data.keys()
+    print('split',split_index.shape)
+    for key in keys:
+        if len(data[key].shape)>1:
+            sub_data[key] = jnp.array(data[key][split_index,:])
+        else:
+            sub_data[key] = jnp.array(data[key][split_index])
+    return sub_data
+
+
+
 class KernelMethod:
     """
     Base estimator for the adaptation
@@ -8,10 +22,10 @@ class KernelMethod:
     def __init__(self, source_train, target_train, source_test, target_test, split, scale=1, lam_set = None, method_set = None):
         """ Initiate parameters
         Args:
-            source_train: pandas.DataFrame, keys: C,W,X,Y
-            target_train: pandas.DataFrame, keys: C, W, X, Y
-            source_test:  pandas.DataFrame, keys: X, Y
-            target_test:  pandas.DataFrame, keys: X, Y
+            source_train: dictionary, keys: C,W,X,Y
+            target_train: dictionary, keys: C, W, X, Y
+            source_test:  dictionary, keys: X, Y
+            target_test:  dictionary, keys: X, Y
             split: Boolean, split the training dataset or not. If True, the samples are evenly split into groups. 
             Hence, each estimator receive smaller number of training samples.  
             scale: length-scale of the kernel function, default: 1.  

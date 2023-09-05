@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from method import KernelMethod
+from method import KernelMethod, split_data_widx
 from cme import ConditionalMeanEmbed
 from bridge_h0 import Bridge_h0
 from bridge_m0 import CME_m0_cme
@@ -14,15 +14,25 @@ class full_adapt(KernelMethod):
     """
     def split_data(self):
         #split training data
-        n = len(self.source_train)
+        n = self.source_train['X'].shape[0]        
+        index = np.random.RandomState(seed=42).permutation(n)
+        split_id = np.split(index, [int(.33*n), int(.67*n)])
+        train_list = []
+        for idx in split_id:
+            train_list.append(split_data_widx(self.source_train, idx))
+ 
+        self.source_train = train_list
 
-        train1, train2, train3 = np.split(self.source_train.sample(frac=1, random_state=42), [int(.33*n), int(.67*n)])
-        self.source_train = [train1, train2, train3]
+        n2 = self.target_train['X'].shape[0]   
+        index = np.random.RandomState(seed=42).permutation(n2)
+        split_id = np.split(index, [int(.33*n), int(.67*n)])     
+        train_list = []
+        for idx in split_id:
+            train_list.append(split_data_widx(self.target_train, idx))
 
-        n2 = len(self.target_train)
-        train1, train2, train3 = np.split(self.target_train.sample(frac=1, random_state=42), [int(.33*n2), int(.67*n2)])
-        self.target_train = [train1, train2, train3]
-        print('complete splitting data')
+        self.target_train = train_list
+        
+
 
     def _fit_one_domain(self, domain_data):
         """ fit single domain.
@@ -49,7 +59,19 @@ class full_adapt(KernelMethod):
             train_data = domain_data
         covars = {}
         covars['X'] = jnp.array(train_data['X'])
-        WC = jnp.hstack((train_data['W'], train_data['C'][:, jnp.newaxis]))
+        
+        if len(train_data['W'].shape)>1:
+            W = train_data['W']
+        else:
+            W = train_data['W'][:, jnp.newaxis]
+
+        if len(train_data['C'].shape)>1:
+            C = train_data['C']
+        else:
+            C = train_data['C'][:, jnp.newaxis]
+        WC = jnp.hstack((W, C))
+
+
         cme_WC_X = ConditionalMeanEmbed(WC, covars, self.lam_set['cme'], self.sc,  method=self.method_set['cme'])
 
 
@@ -144,15 +166,23 @@ class partial_adapt(KernelMethod):
     """
     def split_data(self):
         #split to four batches evenly
-        n = len(self.source_train)
+        n = self.source_train['X'].shape[0]
 
-        train1, train2, train3, train4 = np.split(self.source_train.sample(frac=1, random_state=42), [int(.25*n), int(.5*n), int(.75*n)])
-        self.soure_train = [pd.DataFrame(train1), pd.DataFrame(train2), pd.DataFrame(train3), pd.DataFrame(train3)]
+        index = np.random.RandomState(seed=42).permutation(n)
+        split_id = np.split(index, [int(.25*n), int(.5*n), int(.75*n)])
+        train_list = []
+        for idx in split_id:
+            train_list.append(split_data_widx(self.source_train, idx))
+        self.source_train = train_list
 
-        n2 = len(self.target_train)
-        train1, train2, train3, train4 = np.split(self.target_train.sample(frac=1, random_state=42), [int(.25*n), int(.5*n), int(.75*n)])
-        self.target_train = [pd.DataFrame(train1), pd.DataFrame(train2), pd.DataFrame(train3), pd.DataFrame(train4)]
+        n2 = self.target_train['X'].shape[0]
+        index = np.random.RandomState(seed=42).permutation(n2)
+        split_id = np.split(index, [int(.25*n), int(.5*n), int(.75*n)])
+        train_list = []
+        for idx in split_id:
+            train_list.append(split_data_widx(self.target_train, idx))
 
+        self.target_train = train_list
 
     def _fit_one_domain(self, domain_data):
         """ fit single domain.
@@ -256,25 +286,27 @@ class partial_adapt(KernelMethod):
         eval_list = []
 
         #source evaluation
-        source_testX = self.source_test['X']
+        source_testX = {}
+        source_testX['X'] = self.source_test['X']
         source_testY = self.source_test['Y']
 
         #source on source error
-        predictY = self.predict(source_textX, 'source', 'source')
+        predictY = self.predict(source_testX, 'source', 'source')
         ss_error = self.score(predictY, source_testY)
         eval_list.append({'task': 'source-source', 'predict error': ss_error})
         
         # target on source error
-        predictY = self.predict(source_textX, 'target', 'target')
+        predictY = self.predict(source_testX, 'target', 'target')
         ts_error = self.score(predictY, source_testY)
         eval_list.append({'task': 'target-source', 'predict error': ts_error})
 
         #target evaluation
-        target_testX = self.target_test['X']
+        target_testX = {}
+        target_testX['X'] = self.target_test['X']
         target_testY = self.target_test['Y']
       
         # target on target errror
-        predictY = self.predict(target_textX, 'target', 'target')
+        predictY = self.predict(target_testX, 'target', 'target')
         tt_error = self.score(predictY, target_testY)
         eval_list.append({'task': 'target-target', 'predict error': tt_error})
 

@@ -50,11 +50,9 @@ class Bridge_h0:
     
     if lam == None:
       #implement parameter selection
-      print('debug point 1')
+
       D_t = modif_kron(mat_mul(K_WW, Gamma_xc), K_CC) 
-      print('debug point 2')
       mk_gamma_I=mat_trans(modif_kron(Gamma_xc, jnp.eye(n_sample)))
-      print('debug point 3')
       lam, loo2 = cal_l_yw(D_t, Sigma, mk_gamma_I , Y, lam_min, lam_max)
       print('selected lam of h_0:', lam)
 

@@ -149,13 +149,13 @@ for sd in sd_lst[:6]:
 
 # training on the source domain
 
-n_list = [100,200, 500,700,1000,1500,2000, 2500,3000,4000,5000,7000,10000]#, 12000, 15000]#, 20000, 22000,25000,28000,30000,32000,35000,40000]
+n_list = [20,50,100,200, 500,700,1000,1500,2000, 2500,3000,4000,5000,7000,10000]#, 12000, 15000]#, 20000, 22000,25000,28000,30000,32000,35000,40000]
 #n_list = [1000]
 #specify esitmation method
 cme_method = 'original'
 h0_method  = 'original' #'original'
 m0_method  = 'original'
-index = 'ooo_beta_1e_2_gen9_nt'
+index = 'ooo_beta_1e_3_9_nt2_n_nnn'
 data_list.keys()
 source_error_list = []
 source_error_fapp_list = []
@@ -163,8 +163,11 @@ source_estimator_list = []
 source_error_fappm0_list = []
 ini_alpha = None
 scale=1.
-lam = 1e-2 #1e-3
-lam2 = 1e-2
+#lam = 1e-3 #1e-3
+#lam2 = 1e-3
+lam_cme = None
+lam_h0 = None
+lam_m0 = None
 for id, n in enumerate(n_list):
   est = {}
 
@@ -180,7 +183,7 @@ for id, n in enumerate(n_list):
 
   # estimate
 
-  cme_W_XC_p = ConditionalMeanEmbed(data1['W'][0:n,:], covars, lam, scale, method=cme_method)
+  cme_W_XC_p = ConditionalMeanEmbed(data1['W'][0:n,:], covars, lam_cme, scale, method=cme_method)
 
   Xlist = cme_W_XC_p.get_params()['Xlist']
   covarsx = {}
@@ -190,12 +193,12 @@ for id, n in enumerate(n_list):
   WC = jnp.hstack((data1['W'][0:n,:], data1['C'][0:n,jnp.newaxis]))
   # estimate mu^p_{wx|c}
 
-  cme_WC_X_p = ConditionalMeanEmbed(WC, covarsx, lam, scale,  method=cme_method)
+  cme_WC_X_p = ConditionalMeanEmbed(WC, covarsx, lam_cme, scale,  method=cme_method)
   # [Partial Identification] estimate mu^p_{w|x}
 
-  cme_W_X_p = ConditionalMeanEmbed(data1['W'][0:n,:], covarsx, lam, scale,  method=cme_method)
+  cme_W_X_p = ConditionalMeanEmbed(data1['W'][0:n,:], covarsx, lam_cme, scale,  method=cme_method)
 
-  cme_C_X_p = ConditionalMeanEmbed(data1['C'][0:n], covarsx, lam, scale,  method=cme_method)
+  cme_C_X_p = ConditionalMeanEmbed(data1['C'][0:n], covarsx, lam_cme, scale,  method=cme_method)
   # [Partial Identification] key=2807, estimate m0^p
   data4 = data_list[2807]
   covars = {}
@@ -204,7 +207,7 @@ for id, n in enumerate(n_list):
 
   #m0_p = CME_m0_approx(cme_W_X_p, covars, lam, scale)
   
-  m0_p = CME_m0_cme(cme_W_X_p, covars, lam2, scale,  method=m0_method)
+  m0_p = CME_m0_cme(cme_W_X_p, covars, lam_m0, scale,  method=m0_method)
 
 
   # key=7422, estimate h0^p
@@ -216,7 +219,7 @@ for id, n in enumerate(n_list):
     else:
       covars2[key] = data2[key][0:n]
 
-  h0_p = Bridge_h0(cme_W_XC_p, covars2, data2['Y'][0:n], lam, scale,  method=h0_method)
+  h0_p = Bridge_h0(cme_W_XC_p, covars2, data2['Y'][0:n], lam_h0, scale,  method=h0_method)
 
 
 
@@ -246,7 +249,7 @@ for id, n in enumerate(n_list):
   source_error_fapp_list.append(l2_error_app)
   #store estimator
   est['nsample'] = n
-  est['lam'] = lam
+  #est['lam'] = lam
   est['cme_w_xc'] = cme_W_XC_p
   est['cme_w_x']  = cme_W_X_p
   est['cme_wc_x'] = cme_WC_X_p
@@ -277,7 +280,7 @@ for n in n_list:
   covars['X'] = data1['X'][0:n,:]
   covars['C'] = data1['C'][0:n]
 
-  cme_W_XC_q = ConditionalMeanEmbed(data1['W'][0:n,:], covars, lam, scale,  method=cme_method)
+  cme_W_XC_q = ConditionalMeanEmbed(data1['W'][0:n,:], covars, lam_cme, scale,  method=cme_method)
   Xlist = cme_W_XC_q.get_params()['Xlist']
 
   covarsx = {}
@@ -285,13 +288,13 @@ for n in n_list:
   # concatenate W C
   WC = jnp.hstack((data1['W'][0:n,:], data1['C'][0:n,jnp.newaxis]))
   # estimate mu^p_{wx|c}
-  cme_WC_X_q = ConditionalMeanEmbed(WC, covarsx, lam, scale,  method=cme_method)
+  cme_WC_X_q = ConditionalMeanEmbed(WC, covarsx, lam_cme, scale,  method=cme_method)
 
 
 
   # [Partial Identification] estimate mu^p_{w|x}
-  cme_W_X_q = ConditionalMeanEmbed(data1['W'][0:n,:], covarsx, lam, scale,  method=cme_method)
-  cme_C_X_q = ConditionalMeanEmbed(data1['C'][0:n], covarsx, lam, scale,  method=cme_method)
+  cme_W_X_q = ConditionalMeanEmbed(data1['W'][0:n,:], covarsx, lam_cme, scale,  method=cme_method)
+  cme_C_X_q = ConditionalMeanEmbed(data1['C'][0:n], covarsx, lam_cme, scale,  method=cme_method)
 
   # [Partial Identification] key=2807, estimate m0^p
   data4 = target_data_list[2807]
@@ -299,7 +302,7 @@ for n in n_list:
   covars['X'] = data4['X'][0:n,:]
   covars['C'] = data4['C'][0:n]
 
-  m0_q = CME_m0_cme(cme_W_X_q, covars, lam2, scale,  method=m0_method)
+  m0_q = CME_m0_cme(cme_W_X_q, covars, lam_m0, scale,  method=m0_method)
 
 
   #seed 5654 estimate bridge
@@ -310,7 +313,7 @@ for n in n_list:
       covars2[key] = data2[key][0:n,:]
     else:
       covars2[key] = data2[key][0:n]
-  h0_q = Bridge_h0(cme_W_XC_q, covars2, data2['Y'][0:n], lam, scale,  method=h0_method)
+  h0_q = Bridge_h0(cme_W_XC_q, covars2, data2['Y'][0:n], lam_h0, scale,  method=h0_method)
 
 
 
@@ -335,7 +338,7 @@ for n in n_list:
   target_error_fappm0_list.append(l2_error_appm0)
   est = {}
   est['nsample'] = n
-  est['lam'] = lam
+  #est['lam'] = lam
   est['cme_w_xc'] = cme_W_XC_q
   est['cme_w_x']  = cme_W_X_q
   est['cme_c_x']  = cme_C_X_q
