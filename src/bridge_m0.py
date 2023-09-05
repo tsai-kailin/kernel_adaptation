@@ -58,8 +58,8 @@ class CME_m0_cme:
 
     if (self.lam == None):
       scale_dict = {}
-      l_w, loo1 = cal_l_w(K_gram, K_CC, low=lam_min, high=lam_max, n=10)
-      print('selected lam of cme:', l_w)
+      l_w, loo1 = cal_l_w(self.K_gram, K_CC, low=lam_min, high=lam_max, n=10)
+      print('selected lam of m0:', l_w)
       self.lam = l_w
 
     if self.method=='nystrom':

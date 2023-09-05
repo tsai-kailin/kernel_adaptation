@@ -28,7 +28,7 @@ class ConditionalMeanEmbed:
     new_y = jax.random.normal(key2, shape=(n3_samples,))
     C_YX(new_y, new_x)
   """
-  def __init__(self, Y, X, lam, scale=1, method='original', q=None, l_min=-4, l_max=-1):
+  def __init__(self, Y, X, lam, scale=1, method='original', q=None, lam_min=-4, lam_max=-1):
     """ initiate the parameters
       Args:
         Y: dependent variables, ndarray shape=(n1_samples, n2_features)

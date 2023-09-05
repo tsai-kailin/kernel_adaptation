@@ -104,7 +104,7 @@ def modif_kron(x,y):
     if (y.shape[1]!=x.shape[1]):
         print("Column_number error")
     else:
-        return jnp.array(list(jnp.kron(x[:,i], y[:,i]).T for i in list(range(y.shape[1]))))
+        return jnp.array([jnp.kron(x[:,i], y[:,i]).T for i in range(y.shape[1])])
 
 @jax.jit
 def mat_mul(A,B):
