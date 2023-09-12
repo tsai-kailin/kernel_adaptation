@@ -5,12 +5,12 @@ from jax import random
 import matplotlib.pyplot as plt
 
 
-sys.path.append('../src/')
-from bridge_h0 import Bridge_h0
-from bridge_m0 import CME_m0_cme
-from cme import ConditionalMeanEmbed
-from gen_data import *
-from utils import *
+#sys.path.append('../kadapt/')
+from kadapt.bridge_h0 import Bridge_h0
+from kadapt.bridge_m0 import CME_m0_cme
+from kadapt.cme import ConditionalMeanEmbed
+from kadapt.gen_data import *
+from kadapt.utils import *
 
 #generate data
 
@@ -155,7 +155,7 @@ n_list = [20,50,100,200, 500,700,1000,1500,2000, 2500,3000,4000,5000,7000,10000]
 cme_method = 'original'
 h0_method  = 'original' #'original'
 m0_method  = 'original'
-index = 'ooo_beta_1e_3_9_nt2_n_nnn'
+index = 'ooo_beta_1e_3_9_nt2_n'
 data_list.keys()
 source_error_list = []
 source_error_fapp_list = []
@@ -165,9 +165,9 @@ ini_alpha = None
 scale=1.
 #lam = 1e-3 #1e-3
 #lam2 = 1e-3
-lam_cme = None
-lam_h0 = None
-lam_m0 = None
+lam_cme = 1e-3
+lam_h0 = 1e-3
+lam_m0 = 1e-3
 for id, n in enumerate(n_list):
   est = {}
 

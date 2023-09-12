@@ -5,7 +5,7 @@ from jax import random
 import matplotlib.pyplot as plt
 
 
-sys.path.append('../src/')
+sys.path.append('../kadapt/')
 from bridge_h0 import Bridge_h0
 from bridge_m0 import CME_m0_ver2
 from cme import ConditionalMeanEmbed

@@ -5,13 +5,13 @@ from jax import random
 import matplotlib.pyplot as plt
 import pandas as pd
 
-sys.path.append('../src/')
-from bridge_h0 import Bridge_h0
-from bridge_m0 import CME_m0_cme
-from cme import ConditionalMeanEmbed
-from gen_data import *
-from utils import *
-from adaptation import full_adapt, partial_adapt
+#sys.path.append('../kadapt/')
+from kadapt.bridge_h0 import Bridge_h0
+from kadapt.bridge_m0 import CME_m0_cme
+from kadapt.cme import ConditionalMeanEmbed
+from kadapt.gen_data import *
+from kadapt.utils import *
+from kadapt.adaptation import full_adapt, partial_adapt
 
 ####################
 # generate data    #
@@ -202,6 +202,7 @@ kernel_dict['cme_w_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is W
 kernel_dict['h0']       = {'C': 'rbf'}
 kernel_dict['m0']       = {'C': 'rbf', 'X':'rbf'}
 
+#splitting the traning data or not, if True the training data will be split evenly into 3 for full-adaptation, and 4 for partial-adaptation
 split = False
 scale = 1
 estimator_full = full_adapt(source_train, target_train, source_test, target_test, split, scale, lam_set, method_set, kernel_dict)
