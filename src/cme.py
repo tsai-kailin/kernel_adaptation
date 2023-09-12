@@ -1,4 +1,3 @@
-
 from utils import *
 import numpy as np
 import jax.numpy as jnp
@@ -28,7 +27,7 @@ class ConditionalMeanEmbed:
     new_y = jax.random.normal(key2, shape=(n3_samples,))
     C_YX(new_y, new_x)
   """
-  def __init__(self, Y, X, lam, scale=1, method='original', q=None, lam_min=-4, lam_max=-1):
+  def __init__(self, Y, X, lam, scale=1, method='original', q=None, lam_min=-4, lam_max=-1, kernel_dict=None):
     """ initiate the parameters
       Args:
         Y: dependent variables, ndarray shape=(n1_samples, n2_features)
@@ -37,12 +36,14 @@ class ConditionalMeanEmbed:
         scale: kernel length scale
         method: approximation method, str
         'orginal' for linear solver, 'nystrom' for  Nystrom approximation
+        kernel_dict: Dictionary of kernel_function, dictionary keys are the variable name
         q: number of components to sample if NYstrom approximation is used, int
         lam_min: minimum of lambda (log space) for hyperparameter tuning, float
         lam_min: maximum of lambda (log space) for hyperparameter tuning, float
     """
     self.n_samples = Y.shape[0]
     self.X_list = list(X.keys())
+
     self.X = X
     self.Y = Y
     #assert(lam >= 0.)
@@ -54,11 +55,18 @@ class ConditionalMeanEmbed:
       if self.method != 'nystrom':
         raise Exception("method specified not implemented please select again")
 
+    #set the kernel functions, default is rbf kernel
+    if kernel_dict == None:
+      kernel_dict = {}
+      kernel_dict['Y'] = 'rbf'
+      for key in self.X_list:
+        kernel_dict[key] = 'rbf'
+    self.kernel_dict = kernel_dict
     # construct of gram matrix
     K_XX = jnp.ones((self.n_samples, self.n_samples))
     for key in self.X_list:
       x = X[key]
-      temp = ker_mat(jnp.array(x), jnp.array(x), self.sc)
+      temp = ker_mat(jnp.array(x), jnp.array(x),  kernel=self.kernel_dict[key], scale=self.sc)
 
       K_XX= Hadamard_prod(K_XX, temp)
     self.K_XX = K_XX
@@ -68,7 +76,7 @@ class ConditionalMeanEmbed:
 
     #select lambda
     if (self.lam == None):
-      K_YY = ker_mat(jnp.array(self.Y), jnp.array(self.Y), self.sc)
+      K_YY = ker_mat(jnp.array(self.Y), jnp.array(self.Y), kernel=self.kernel_dict['Y'], scale=self.sc)
       scale_dict = {}
       l_w, loo1 = cal_l_w(K_XX, K_YY, low=lam_min, high=lam_max, n=10)
       print('selected lam of cme:', l_w)
@@ -112,7 +120,7 @@ class ConditionalMeanEmbed:
     Gx = self.K_XX + self.lam*self.n_samples*jnp.eye(self.n_samples)
 
     #K_YY = ker_mat(jnp.array(self.Y), jnp.array(self.Y), self.sc)
-    out_dict = {"GramX": Gx, "Y":self.Y, "X":self.X, "Xlist":self.X_list, "scale":self.sc}
+    out_dict = {"GramX": Gx, "Y":self.Y, "X":self.X, "Xlist":self.X_list, "scale":self.sc, 'kernel_dict':self.kernel_dict}
     return out_dict
   
 
@@ -129,7 +137,7 @@ class ConditionalMeanEmbed:
     Phi_Xnx = jnp.ones((self.n_samples, n2_samples))
 
     for key in self.X_list:
-      temp = ker_mat(jnp.array(self.X[key]), jnp.array(new_x[key]), self.sc)
+      temp = ker_mat(jnp.array(self.X[key]), jnp.array(new_x[key]), kernel=self.kernel_dict[key], scale=self.sc)
       Phi_Xnx = Hadamard_prod(Phi_Xnx, temp)
     
     
@@ -163,7 +171,7 @@ class ConditionalMeanEmbed:
     """
     memb_nx = self.get_mean_embed(new_x)
     Gamma = memb_nx["Gamma"]
-    Phi_Yny = ker_mat(jnp.array(new_y), jnp.array(self.Y), self.sc)
+    Phi_Yny = ker_mat(jnp.array(new_y), jnp.array(self.Y), kernel=self.kernel_dict['Y'], scale=self.sc)
 
 
     return mat_mul(Phi_Yny, Gamma)

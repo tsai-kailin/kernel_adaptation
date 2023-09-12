@@ -56,10 +56,10 @@ def gen_W(U1,U2, m_w, v_w, n,  key):
 #    C= np.sin(X1*.1)+np.cos(U2)+random.normal(key,(n,)) * beta
 #    return C
 
-def gen_C(U1,U2,X1,X2, beta, n, key):
+#def gen_C(U1,U2,X1,X2, beta, n, key):
      #work dgp1
-    C= X1*X2 + np.cos(U1*.3)+U2*random.normal(key,(n,)) * beta
-    return C
+#    C= X1*X2 + np.cos(U1*.3)+U2*random.normal(key,(n,)) * beta
+#    return C
 
 def gen_C(U1,U2,X1,X2, beta, n, key):
 #    #work dgp9

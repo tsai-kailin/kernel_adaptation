@@ -47,6 +47,9 @@ def linear_kern(x, y):
 @jax.jit
 def l2_dist(x,y):
     return jnp.array((x - y)**2)
+@jax.jit
+def binary_dist(x, y):
+    return x*y + (1-x)*(1-y)
 
 #@functools.partial(jax.jit, static_argnums=(0,1))
 def identifier(x,y):
@@ -70,6 +73,20 @@ def rbf_ker(x,y,scale=1):
     #coef=1/(2*gamma**2)
     coef=1/(2*scale*(gamma**2))
     return jnp.exp(-coef*dist_mat)
+
+@jax.jit
+def binary_ker(x,y):
+    dist_mat = dist_func(binary_dist, x, y)
+    return dist_mat
+
+@jax.jit
+def rbf_column_ker(x, y, scale):
+    fn = lambda u,v: rbf_ker(u,v, scale)
+    v = vmap(fn, (1,1))
+    dist_mat_stack = v(x,y)
+    return jnp.prod(dist_mat_stack, axis=2)
+
+
 
 		
 @jax.jit	
@@ -117,37 +134,62 @@ def jsla_solve(A,B):
 
 @jax.jit
 def katri_rao_col(a,b):
-  fn = lambda x,y: kron_prod(x,y)
-  v = vmap(fn, (1,1),1)
-  return v(a,b)
+    fn = lambda x,y: kron_prod(x,y)
+    v = vmap(fn, (1,1),1)
+    return v(a,b)
 
 
 def integral_rbf_ker(x,y, ori_scale):
-  """
-  compute new gram matrix such that each entry is \tilde{K}(x,y)=\int K(z,x)K(z,y)dz, where K is the original kernel function
+    """
+    compute new gram matrix such that each entry is \tilde{K}(x,y)=\int K(z,x)K(z,y)dz, where K is the original kernel function
 
-  """
-  dist_mat=dist_func(l2_dist,x,y)
-  gamma=modist(jnp.sqrt(dist_mat))
-  new_l = ori_scale*2
-  new_gram = rbf_ker(x,y,new_l)*jnp.sqrt(jnp.pi*ori_scale)*gamma
-  return new_gram
+    """
+    dist_mat=dist_func(l2_dist,x,y)
+    gamma=modist(jnp.sqrt(dist_mat))
+    new_l = ori_scale*2
+    new_gram = rbf_ker(x,y,new_l)*jnp.sqrt(jnp.pi*ori_scale)*gamma
+    return new_gram
 
-def ker_mat(X1,X2, scale):
-  """
-  compute the K_xx
-  """
-  K_x1x2 = rbf_ker(jnp.array(X1), jnp.array(X2), scale)
-  if len(K_x1x2.shape) == 3:
-    #perform Hadmard product
-    K_x1x2 = jnp.prod(K_x1x2, axis=2)
-  return K_x1x2
+def ker_mat(X1,X2, kernel='rbf', scale=1.):
+    """
+    compute the K_xx
+    Args:
+    X1: shape: (n1_samples, n1_features)
+    X2: shape: (n2_samples, n2_features)
+    kernel: kernel method, default: 'rbf', str
+    scale: kernel_length scale
+    """
+    def compute_gram(x,y,k_fun):
+        if kernel == 'rbf':
+            temp = rbf_ker(jnp.array(x), jnp.array(y), scale)
+        if kernel == 'binary':
+            temp = binary_ker(jnp.array(x), jnp.array(y))
+        if kernel == 'rbf_column':
+            temp = rbf_column_ker(jnp.array(x), jnp.array(y), scale)
+        return temp
+
+    if isinstance(kernel, list):
+        s_id = 0
+        K_x1x2 = jnp.ones((X1.shape[0], X2.shape[0]))
+        for k_func in kernel:
+            e_id = s_id + k_func['dim']
+            K_x1x2 = jnp.prod(K_x1x2,  compute_gram(jnp.array(X1[:,s_id:e_id]), jnp.array(X2[:,s_id:e_id]), k_func['kernel']))
+            s_id  += k_func['dim']
+
+
+    else:
+        K_x1x2 = compute_gram(X1,X2, kernel)
+
+    if len(K_x1x2.shape) == 3:
+        #perform Hadmard product
+        K_x1x2 = jnp.prod(K_x1x2, axis=2)
+    return K_x1x2
 
 
 def stage2_weights(Gamma_w, Sigma_inv):
-            n_row = Gamma_w.shape[0]
-            arr = [mat_mul(jnp.diag(Gamma_w[i, :]), Sigma_inv) for i in range(n_row)]
-            return jnp.concatenate(arr, axis=0)
+    n_row = Gamma_w.shape[0]
+    arr = [mat_mul(jnp.diag(Gamma_w[i, :]), Sigma_inv) for i in range(n_row)]
+    return jnp.concatenate(arr, axis=0)
 
 
 def standardise(X):

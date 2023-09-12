@@ -50,7 +50,9 @@ class full_adapt(KernelMethod):
         covars['X'] = jnp.array(train_data['X'])
         covars['C'] = jnp.array(train_data['C'])
 
-        cme_W_XC = ConditionalMeanEmbed(jnp.array(train_data['W']), covars, self.lam_set['cme'], self.sc, method=self.method_set['cme'])
+        cme_W_XC = ConditionalMeanEmbed(jnp.array(train_data['W']), covars, self.lam_set['cme'], 
+                                        kernel_dict=self.kernel_dict['cme_w_xc'], scale=self.sc, 
+                                        method=self.method_set['cme'])
 
         # estimate cme(W,C|x)
         if self.split:
@@ -72,7 +74,9 @@ class full_adapt(KernelMethod):
         WC = jnp.hstack((W, C))
 
 
-        cme_WC_X = ConditionalMeanEmbed(WC, covars, self.lam_set['cme'], self.sc,  method=self.method_set['cme'])
+        cme_WC_X = ConditionalMeanEmbed(WC, covars, self.lam_set['cme'], 
+                                        kernel_dict = self.kernel_dict['cme_wc_x'], scale=self.sc,  
+                                        method=self.method_set['cme'])
 
 
 
@@ -86,7 +90,9 @@ class full_adapt(KernelMethod):
         covars = {}
         for key in Xlist:
             covars[key] = train_data[key]
-        h0 = Bridge_h0(cme_W_XC, covars, train_data['Y'], self.lam_set['h0'], self.sc,  method=self.method_set['h0'])
+        h0 = Bridge_h0(cme_W_XC, covars, train_data['Y'], self.lam_set['h0'], 
+                        kernel_dict = self.kernel_dict['h0'], scale = self.sc,  
+                        method=self.method_set['h0'])
         estimator = {}
         estimator['cme_w_xc'] = cme_W_XC
         estimator['cme_wc_x'] = cme_WC_X
@@ -199,7 +205,9 @@ class partial_adapt(KernelMethod):
         covars['X'] = train_data['X']
         covars['C'] = train_data['C']
 
-        cme_W_XC = ConditionalMeanEmbed(train_data['W'], covars, self.lam_set['cme'], self.sc, method=self.method_set['cme'])
+        cme_W_XC = ConditionalMeanEmbed(train_data['W'], covars, self.lam_set['cme'],
+                                        kernel_dict=self.kernel_dict['cme_w_xc'], scale=self.sc, 
+                                        method=self.method_set['cme'])
 
         # estimate cme(W|x) and cme(C|x)
         if self.split:
@@ -209,8 +217,12 @@ class partial_adapt(KernelMethod):
         covars = {}
         covars['X'] = train_data['X']
 
-        cme_W_X = ConditionalMeanEmbed(train_data['W'], covars, self.lam_set['cme'], self.sc,  method=self.method_set['cme'])
-        cme_C_X = ConditionalMeanEmbed(train_data['C'], covars, self.lam_set['cme'], self.sc,  method=self.method_set['cme'])
+        cme_W_X = ConditionalMeanEmbed(train_data['W'], covars, self.lam_set['cme'], 
+                                        kernel_dict=self.kernel_dict['cme_w_x'], scale=self.sc,  
+                                        method=self.method_set['cme'])
+        cme_C_X = ConditionalMeanEmbed(train_data['C'], covars, self.lam_set['cme'], 
+                                        kernel_dict = self.kernel_dict['cme_c_x'] , scale=self.sc,  
+                                        method=self.method_set['cme'])
 
 
         # estimate m0
@@ -224,7 +236,9 @@ class partial_adapt(KernelMethod):
         covars['C'] = train_data['C']
 
 
-        m0 =  CME_m0_cme(cme_W_X, covars, self.lam_set['m0'], self.sc,  method=self.method_set['m0'])
+        m0 =  CME_m0_cme(cme_W_X, covars, self.lam_set['m0'], 
+                        kernel_dict=self.kernel_dict['m0'], scale=self.sc, 
+                        method=self.method_set['m0'])
 
 
         # estimate h0
@@ -237,7 +251,11 @@ class partial_adapt(KernelMethod):
         covars = {}
         for key in Xlist:
             covars[key] = train_data[key]
-        h0 = Bridge_h0(cme_W_XC, covars, train_data['Y'], self.lam_set['h0'], self.sc,  method=self.method_set['h0'])
+    
+        h0 = Bridge_h0(cme_W_XC, covars, train_data['Y'], self.lam_set['h0'],
+                        kernel_dict=self.kernel_dict['h0'], scale=self.sc, 
+                        method=self.method_set['h0'])
+    
         estimator = {}
         estimator['cme_w_xc'] = cme_W_XC
         estimator['cme_w_x'] = cme_W_X

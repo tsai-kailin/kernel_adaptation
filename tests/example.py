@@ -185,17 +185,32 @@ print('target_test  number of samples: ', target_test['X'].shape[0])
 ####################
 #set the parameter
 
+# set None to use leave-one-out cross-validation method. 
+# be aware of the sample size for h0 when using leave-one-out cross-validation, may run into out of memory issue
 lam_set = {'cme': 1e-3, 'h0': 1e-3, 'm0': 1e-3}
 method_set = {'cme': 'original', 'h0': 'original', 'm0': 'original'}
-split = True
+
+#specity the kernel functions for each estimator
+kernel_dict = {}
+
+kernel_dict['cme_w_xc'] = {'X': 'rbf', 'C': 'rbf', 'Y':'rbf'} #Y is W
+#kernel_dict['cme_wc_x'] = {'X': 'rbf', 'Y': [{'kernel':'rbf', 'dim':2}, {'kernel':'rbf', 'dim':1}]} # Y is (W,C)
+kernel_dict['cme_wc_x'] = {'X': 'rbf', 'Y': 'rbf'} # Y is (W,C)
+
+kernel_dict['cme_c_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is C
+kernel_dict['cme_w_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is W
+kernel_dict['h0']       = {'C': 'rbf'}
+kernel_dict['m0']       = {'C': 'rbf', 'X':'rbf'}
+
+split = False
 scale = 1
-estimator_full = full_adapt(source_train, target_train, source_test, target_test, split, scale, lam_set, method_set)
+estimator_full = full_adapt(source_train, target_train, source_test, target_test, split, scale, lam_set, method_set, kernel_dict)
 
 estimator_full.fit()
 estimator_full.evaluation()
 
 
-estimator_partial = partial_adapt(source_train, target_train, source_test, target_test, split, scale, lam_set, method_set)
+estimator_partial = partial_adapt(source_train, target_train, source_test, target_test, split, scale, lam_set, method_set, kernel_dict)
 
 estimator_partial.fit()
 estimator_partial.evaluation()

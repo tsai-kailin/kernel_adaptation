@@ -14,13 +14,14 @@ class CME_m0_cme:
   """ Construct conditonal mean embedding that embeds the bridge function m0.
   Double conditional mean embedding.
   """
-  def __init__(self, Cw_x, covars, lam, scale=1., q=None, method='original', lam_min = -4, lam_max=-1):
+  def __init__(self, Cw_x, covars, lam, scale=1., q=None, method='original', lam_min = -4, lam_max=-1,  kernel_dict=None):
     """
     Args:
       Cw_x: ConditionalMeanEmbed, object
       covars: dictionary of covariates, dict
       lam: tuning parametier, float
       scale: kernel length-scale, float
+      kernel_dict: dict
       q: rank of the matrix, when Nystrom approximation is used, int
       method: method, "original" or "nystrom"
       'original' for linear solver, 'nystrom' for Nystrom approximation
@@ -30,29 +31,37 @@ class CME_m0_cme:
     self.method = method
     self.sc = scale
 
+    if kernel_dict == None:
+      kernel_dict = {}
+      kernel_dict['X']='rbf'
+      kernel_dict['C']='rbf'
+    
     self.Cw_x = Cw_x
     params = Cw_x.get_params()
     
     self.W = params['Y']
     self.w_sc = params['scale']
-    
+    kernel_dict['W'] = params['kernel_dict']['Y']
+    self.kernel_dict = kernel_dict
+
+
     covarsx = {}
     covarsx['X'] = covars['X']
-    K_ww = ker_mat(jnp.array(self.W), jnp.array(self.W), params['scale'])
+    K_ww = ker_mat(jnp.array(self.W), jnp.array(self.W), kernel=kernel_dict['W'], scale=params['scale'])
     self.Gamma_x = Cw_x.get_mean_embed(covarsx)["Gamma"]
 
     kx_g_kx = mat_mul(self.Gamma_x.T, mat_mul(K_ww, self.Gamma_x))
 
     self.X = covars['X']
-   
-    K_xx = ker_mat(jnp.array(self.X), jnp.array(self.X), self.sc)
+
+    K_xx = ker_mat(jnp.array(self.X), jnp.array(self.X), kernel=kernel_dict['X'], scale=self.sc)
     #build the kernel matrix
     self.K_gram =  Hadamard_prod(K_xx, kx_g_kx)
     self.C = covars['C']
     self.n_samples = self.C.shape[0]
 
 
-    K_CC = ker_mat(jnp.array(self.C), jnp.array(self.C), self.sc)
+    K_CC = ker_mat(jnp.array(self.C), jnp.array(self.C), kernel=kernel_dict['C'], scale=self.sc)
 
     self.lam = lam
 
@@ -97,14 +106,14 @@ class CME_m0_cme:
     """
     
     # compute the gram matrix
-    K_Xnewx = ker_mat(jnp.array(self.X), jnp.array(new_x['X']), self.sc)
+    K_Xnewx = ker_mat(jnp.array(self.X), jnp.array(new_x['X']), kernel=self.kernel_dict['X'], scale=self.sc)
     
     
     params1 = Cw_x.get_mean_embed(new_x)
     Gamma1_newx = params1["Gamma"] #(n_samples, n6_samples)
     W1 = params1["Y"]
 
-    K_w1w2 = ker_mat(jnp.array(self.W), jnp.array(W1), self.w_sc) #(n_samples, n'_samples)
+    K_w1w2 = ker_mat(jnp.array(self.W), jnp.array(W1), kernel=self.kernel_dict['W'], scale=self.w_sc) #(n_samples, n'_samples)
     kx_g_knewx = mat_mul(mat_mul(self.Gamma_x.T, K_w1w2), Gamma1_newx) #(n5_samples, n6_samples)
 
     G_x = Hadamard_prod(K_Xnewx, kx_g_knewx)
@@ -138,7 +147,7 @@ class CME_m0_cme:
   def __call__(self, new_c, Cw_x, new_x):
 
     params = self.get_A_operator(Cw_x, new_x)
-    K_Cnewc = ker_mat(jnp.array(self.C), jnp.array(new_c), self.w_sc) #(n5_samples, n2_samples)
+    K_Cnewc = ker_mat(jnp.array(self.C), jnp.array(new_c), kernel=self.kernel_dict['C'], scale=self.sc) #(n5_samples, n2_samples)
     return Hadamard_prod(params['beta'].T, K_Cnewc).sum(axis=0)
 
   def get_coefs(self, Cw_x, new_x):

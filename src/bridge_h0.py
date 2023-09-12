@@ -13,7 +13,7 @@ class Bridge_h0:
       Gamma_xc = mu_w_cx.get_mean_embed(x,c)['Gamma'] #(n1_samples, n2_samples)
       \Sigma = (Gamma_xc^T K_ww Gamma_xc)K_cc
   """
-  def __init__(self, Cw_xc, covars, Y, lam, scale=1., method='original', lam_min=-4, lam_max=-1):
+  def __init__(self, Cw_xc, covars, Y, lam, scale=1., method='original', lam_min=-4, lam_max=-1,  kernel_dict=None):
     """Initiate the parameters
     Args:
       Cw_xc: object, ConditionalMeanEmbed
@@ -32,13 +32,19 @@ class Bridge_h0:
     # construct A matrix
     C = covars["C"]
 
-    K_CC = ker_mat(jnp.array(C), jnp.array(C), self.sc)
+    if kernel_dict == None:
+      kernel_dict = {}
+      kernel_dict['C'] = 'rbf'
+
+    K_CC = ker_mat(jnp.array(C), jnp.array(C), kernel=kernel_dict['C'], scale=self.sc)
     self.C = C
     params = Cw_xc.get_params()
     W = params["Y"]
     self.w_sc = params["scale"]
     self.W = W
-    K_WW = ker_mat(jnp.array(W), jnp.array(W), params["scale"])
+    kernel_dict['W'] = params['kernel_dict']['Y']
+    K_WW = ker_mat(jnp.array(W), jnp.array(W), kernel=kernel_dict['W'], scale=params["scale"])
+    self.kernel_dict = kernel_dict
 
     assert(set(params["Xlist"]) == set(covars.keys()))
     # construct Gamma_xc matrix
@@ -111,11 +117,11 @@ class Bridge_h0:
         h0(w,c): ndarray shape = (n3_samples)
     """
     # compute K_newWW
-    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), self.w_sc) #(n1_sample, n3_sample)
+    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), kernel=self.kernel_dict['W'], scale=self.w_sc) #(n1_sample, n3_sample)
 
 
     # compute K_newCC
-    K_CnewC = ker_mat(jnp.array(self.C), jnp.array(new_c), self.sc) #(n2_sample, n3_sample)
+    K_CnewC = ker_mat(jnp.array(self.C), jnp.array(new_c), kernel=self.kernel_dict['C'], scale=self.sc) #(n2_sample, n3_sample)
 
 
     h_wc = fn = lambda kc, kw: jnp.dot(mat_mul(self.alpha, kc), kw)
@@ -176,9 +182,9 @@ class Bridge_h0:
     Gamma_c = cme_c_x.get_A_operator(cme_w_x, new_x)['beta'].T #(n4_sample, n5_sample)
     t2 = time.time()
     # compute K_newWW
-    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), self.w_sc) #(n1_sample, n3_sample)
+    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), kernel=self.kernel_dict['W'], scale=self.w_sc) #(n1_sample, n3_sample)
     # compute K_newCC
-    K_CnewC = ker_mat(jnp.array(self.C), jnp.array(new_c), self.sc) #(n2_sample, n4_sample)
+    K_CnewC = ker_mat(jnp.array(self.C), jnp.array(new_c), kernel=self.kernel_dict['C'], scale=self.sc) #(n2_sample, n4_sample)
 
     kcTalphakw = mat_mul(K_WnewW.T, mat_mul(self.alpha,K_CnewC)) #(n3_sample,  n4_sample)
     t3 = time.time()
@@ -209,9 +215,9 @@ class Bridge_h0:
     Gamma_c = cme_c_x.get_mean_embed(new_x)['Gamma'] #(n4_sample, n5_sample)
     t2 = time.time()
     # compute K_newWW
-    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), self.w_sc) #(n1_sample, n3_sample)
+    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), kernel=self.kernel_dict['W'], scale=self.w_sc) #(n1_sample, n3_sample)
     # compute K_newCC
-    K_CnewC = ker_mat(jnp.array(self.C), jnp.array(new_c), self.sc) #(n2_sample, n4_sample)
+    K_CnewC = ker_mat(jnp.array(self.C), jnp.array(new_c), kernel=self.kernel_dict['C'], scale=self.sc) #(n2_sample, n4_sample)
 
     kwTalphakc = mat_mul(K_WnewW.T, mat_mul(self.alpha,K_CnewC)) #(n3_sample,  n4_sample)
     t3 = time.time()

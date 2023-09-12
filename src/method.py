@@ -19,7 +19,7 @@ class KernelMethod:
     Base estimator for the adaptation
     split_data(), predict(), evaluation(), are implemented by the child class
     """
-    def __init__(self, source_train, target_train, source_test, target_test, split, scale=1, lam_set = None, method_set = None):
+    def __init__(self, source_train, target_train, source_test, target_test, split, scale=1, lam_set = None, method_set = None, kernel_dict=None):
         """ Initiate parameters
         Args:
             source_train: dictionary, keys: C,W,X,Y
@@ -32,6 +32,7 @@ class KernelMethod:
             lam_set: a dictionary of tuning parameter, set None for leave-one-out estimation
             For example, lam_set={'cme': lam1, 'h0': lam2, 'm0': lam3}
             method_set: a dictionary of optimization methods for different estimators, default is 'original'
+            kernel_dict: a dictionary of specified kernel functions
         """
         self.source_train = source_train
         self.target_train = target_train
@@ -50,6 +51,16 @@ class KernelMethod:
         if method_set == None:
             method_set = {'cme': 'original', 'h0': 'original', 'm0': 'original'}
         self.method_set = method_set
+
+        if kernel_dict == None:
+            kernel_dict['cme_w_xc'] = {'X': 'rbf', 'C': 'rbf', 'Y':'rbf'} #Y is W
+            kernel_dict['cme_wc_x'] = {'X': 'rbf', 'Y': [{'kernel':'rbf', 'dim':2}, {'kernel':'rbf', 'dim':1}]} # Y is (W,C)
+            kernel_dict['cme_c_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is C
+            kernel_dict['cme_w_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is W
+            kernel_dict['h0']       = {'C': 'rbf'}
+            kernel_dict['m0']       = {'C': 'rbf', 'X':'rbf'}
+        
+        self.kernel_dict = kernel_dict 
 
     def fit(self):
         #split dataset
