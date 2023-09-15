@@ -84,7 +84,7 @@ def rbf_column_ker(x, y, scale):
     fn = lambda u,v: rbf_ker(u,v, scale)
     v = vmap(fn, (1,1))
     dist_mat_stack = v(x,y)
-    return jnp.prod(dist_mat_stack, axis=2)
+    return jnp.prod(dist_mat_stack, axis=0)
 
 
 
@@ -183,6 +183,7 @@ def ker_mat(X1,X2, kernel='rbf', scale=1.):
     if len(K_x1x2.shape) == 3:
         #perform Hadmard product
         K_x1x2 = jnp.prod(K_x1x2, axis=2)
+   
     return K_x1x2
 
 
