@@ -1,3 +1,11 @@
+"""
+Implementation of the base kernel estimator
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
+
 import jax.numpy as jnp
 
 
@@ -84,6 +92,13 @@ class KernelMethod:
 
 
     def score(self, testY, predictY):
+        ## Fix shape
+        if testY.shape > predictY.shape:
+            assert testY.ndim == predictY.ndim + 1 and testY.shape[:-1] == predictY.shape, "unresolveable shape mismatch betweenn testY and predictY"
+            predictY = predictY.reshape(testY.shape)
+        elif testY.shape < predictY.shape:
+            assert testY.ndim + 1 == predictY.ndim and testY.shape == predictY.shape[:-1], "unresolveable shape mismatch betweenn testY and predictY"
+            testY = testY.reshape(predictY.shape)
         l2_error =  jnp.sum((testY-predictY)**2)/predictY.shape[0]
         return l2_error
     

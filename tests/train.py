@@ -6,11 +6,72 @@ import matplotlib.pyplot as plt
 
 
 #sys.path.append('../kadapt/')
-from kadapt.bridge_h0 import Bridge_h0
-from kadapt.bridge_m0 import CME_m0_cme
-from kadapt.cme import ConditionalMeanEmbed
+from kadapt.models.plain_kernel.bridge_h0 import Bridge_h0
+from kadapt.models.plain_kernel.bridge_m0 import CME_m0_cme
+from kadapt.models.plain_kernel.cme import ConditionalMeanEmbed
 from kadapt.gen_data import *
 from kadapt.utils import *
+
+import argparse
+
+
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('--cme_m', type=str, default='original',
+                    help='conditional mean embed estimation method')
+parser.add_argument('--h0_m', type=str, default='original',
+                    help='bridge function h0 estimation method')
+parser.add_argument('--m0_m', type=str, default='original',
+                    help='bridge function m0 estimation method') 
+
+parser.add_argument('--cme_lam',  type=float, default=1e-3,
+                    help='lambda for conditional mean embed, set -1 for generalized cross validation')                   
+parser.add_argument('--h0_lam',  type=float, default=1e-3,
+                    help='lambda for bridge h0')   
+parser.add_argument('--m0_lam',  type=float, default=1e-3,
+                    help='lambda for bridge m0, set -1 for generalized cross validation') 
+
+parser.add_argument('--task',  type=int, default=1,
+                    help='task id: 1 or 2') 
+
+
+args = parser.parse_args()
+
+
+#specify esitmation method
+cme_method = args.cme_m
+h0_method  = args.h0_m #'original'
+m0_method  = args.m0_m
+
+lam_cme = args.cme_lam # setting None will activate generalized cross validation
+lam_h0 = args.h0_lam
+lam_m0 = args.m0_lam
+
+if lam_cme == -1.:
+  lam_cme = None
+
+if lam_m0 == -1.:
+  lam_m0 = None
+
+
+scale=1.
+task_id = args.task
+
+lam_str = ''
+for lam in [lam_cme, lam_h0, lam_m0]:
+  if lam is not None:
+    lam_str += str(-int(np.log10(lam)))
+  else:
+    lam_str += 'n'
+
+filename = cme_method[0]+h0_method[0]+m0_method[0]+'_'+lam_str+'_task_'+str(task_id)
+
+
+if task_id == 1:
+  gen_C = gen_C_task1
+  gen_Y = gen_Y_task1
+elif task_id == 2:
+  gen_C = gen_C_task2
+  gen_Y = gen_Y_task2
 
 #generate data
 
@@ -150,24 +211,20 @@ for sd in sd_lst[:6]:
 # training on the source domain
 
 n_list = [20,50,100,200, 500,700,1000,1500,2000, 2500,3000,4000,5000,7000,10000]#, 12000, 15000]#, 20000, 22000,25000,28000,30000,32000,35000,40000]
-#n_list = [1000]
-#specify esitmation method
-cme_method = 'original'
-h0_method  = 'original' #'original'
-m0_method  = 'original'
-index = 'ooo_beta_1e_3_9_nt2_n'
+
+
+
+
 data_list.keys()
 source_error_list = []
 source_error_fapp_list = []
 source_estimator_list = []
 source_error_fappm0_list = []
-ini_alpha = None
-scale=1.
-#lam = 1e-3 #1e-3
-#lam2 = 1e-3
-lam_cme = 1e-3
-lam_h0 = 1e-3
-lam_m0 = 1e-3
+
+
+
+
+
 for id, n in enumerate(n_list):
   est = {}
 
@@ -499,4 +556,4 @@ plt.yscale('log')
 plt.title(r"Estimation error of the target $g(x)=\langle \hat{h}_0, \hat{\mu}_{WC\mid x}\rangle$")
 plt.grid()
 plt.legend(loc=(1.1,0.3))
-plt.savefig('result_{}.png'.format(index),  bbox_inches='tight')
+plt.savefig('result_{}.png'.format(filename),  bbox_inches='tight')

@@ -1,3 +1,10 @@
+"""
+Implementation of the kernel bridge function cme
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
 from kadapt.utils import *
 import numpy as np
 import jax.numpy as jnp

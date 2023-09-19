@@ -1,3 +1,10 @@
+"""
+A simple example of the two-stage kernel estimator
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
 import sys
 import numpy as np
 import jax.numpy as jnp
@@ -6,12 +13,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 #sys.path.append('../kadapt/')
-from kadapt.bridge_h0 import Bridge_h0
-from kadapt.bridge_m0 import CME_m0_cme
-from kadapt.cme import ConditionalMeanEmbed
+from kadapt.models.plain_kernel.bridge_h0 import Bridge_h0
+from kadapt.models.plain_kernel.bridge_m0 import CME_m0_cme
+from kadapt.models.plain_kernel.cme import ConditionalMeanEmbed
 from kadapt.gen_data import *
 from kadapt.utils import *
-from kadapt.adaptation import full_adapt, partial_adapt
+from kadapt.models.plain_kernel.adaptation import full_adapt, partial_adapt
 
 ####################
 # generate data    #
@@ -81,8 +88,8 @@ for sd in sd_lst[:2]:
   U = ((jnp.asarray(gen_U(n,key=subkeysu))).T)
   X = ((jnp.asarray(gen_X(U[:,0],U[:,1], m_x, v_x, n, key=subkeysx))).T)
   W = ((jnp.asarray(gen_W(U[:,0],U[:,1], m_w, v_w, n, key=subkeysw))).T)
-  C= (gen_C(U[:,0],U[:,1], X[:,0], X[:,1],0.05, n, key=keyc))
-  Y =(gen_Y(C, U[:,0], U[:,1], n))
+  C= (gen_C_task1(U[:,0],U[:,1], X[:,0], X[:,1],0.05, n, key=keyc))
+  Y =(gen_Y_task1(C, U[:,0], U[:,1], n))
 
   # Standardised sample
   Us = standardise(U) [0]
@@ -147,8 +154,8 @@ for sd in sd_lst[:2]:
   U = ((jnp.asarray(gen_U_target(n,key=subkeysu))).T)
   X = ((jnp.asarray(gen_X(U[:,0],U[:,1], m_x, v_x, n, key=subkeysx))).T)
   W = ((jnp.asarray(gen_W(U[:,0],U[:,1], m_w, v_w, n, key=subkeysw))).T)
-  C= (gen_C(U[:,0],U[:,1], X[:,0], X[:,1],0.05, n, key=keyc))
-  Y =(gen_Y(C, U[:,0], U[:,1], n))
+  C= (gen_C_task1(U[:,0],U[:,1], X[:,0], X[:,1],0.05, n, key=keyc))
+  Y =(gen_Y_task1(C, U[:,0], U[:,1], n))
 
   # Standardised sample
   Us = standardise(U) [0]
@@ -195,7 +202,7 @@ kernel_dict = {}
 
 kernel_dict['cme_w_xc'] = {'X': 'rbf', 'C': 'rbf', 'Y':'rbf'} #Y is W
 #kernel_dict['cme_wc_x'] = {'X': 'rbf', 'Y': [{'kernel':'rbf', 'dim':2}, {'kernel':'rbf', 'dim':1}]} # Y is (W,C)
-kernel_dict['cme_wc_x'] = {'X': 'rbf', 'Y': 'rbf'} # Y is (W,C)
+kernel_dict['cme_wc_x'] = {'X': 'rbf_column', 'Y': 'rbf'} # Y is (W,C)
 
 kernel_dict['cme_c_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is C
 kernel_dict['cme_w_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is W

@@ -1,11 +1,18 @@
-#this file implement the full adaptation pipeline
+"""
+Implementation of the adaptation pipeline
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
+
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from kadapt.method import KernelMethod, split_data_widx
-from kadapt.cme import ConditionalMeanEmbed
-from kadapt.bridge_h0 import Bridge_h0
-from kadapt.bridge_m0 import CME_m0_cme
+from kadapt.models.plain_kernel.method import KernelMethod, split_data_widx
+from kadapt.models.plain_kernel.cme import ConditionalMeanEmbed
+from kadapt.models.plain_kernel.bridge_h0 import Bridge_h0
+from kadapt.models.plain_kernel.bridge_m0 import CME_m0_cme
 
 class full_adapt(KernelMethod):
     """
@@ -145,6 +152,8 @@ class full_adapt(KernelMethod):
 
         df = pd.DataFrame(eval_list)
         print(df)
+
+        return df
 
 
 
@@ -312,11 +321,20 @@ class partial_adapt(KernelMethod):
         predictY = self.predict(source_testX, 'source', 'source')
         ss_error = self.score(predictY, source_testY)
         eval_list.append({'task': 'source-source', 'predict error': ss_error})
-        
+
+        predictY = self.predict_adapt(source_testX, 'source', 'source', 'source')
+        ssm_error = self.score(predictY, source_testY)
+        eval_list.append({'task': 'source-source (m0)', 'predict error': ssm_error})
+
         # target on source error
         predictY = self.predict(source_testX, 'target', 'target')
         ts_error = self.score(predictY, source_testY)
         eval_list.append({'task': 'target-source', 'predict error': ts_error})
+
+        predictY = self.predict_adapt(source_testX, 'target', 'target', 'target')
+        tsm_error = self.score(predictY, source_testY)
+        eval_list.append({'task': 'target-source (m0)', 'predict error': tsm_error})
+
 
         #target evaluation
         target_testX = {}
@@ -328,16 +346,30 @@ class partial_adapt(KernelMethod):
         tt_error = self.score(predictY, target_testY)
         eval_list.append({'task': 'target-target', 'predict error': tt_error})
 
+        predictY = self.predict_adapt(target_testX, 'target', 'target', 'target')
+        ttm_error = self.score(predictY, target_testY)
+        eval_list.append({'task': 'target-target (m0)', 'predict error': ttm_error})
+
         # source on target error
         predictY = self.predict(target_testX, 'source', 'source')
         st_error = self.score(predictY,  target_testY)
         eval_list.append({'task': 'source-target', 'predict error': st_error})
 
+        predictY = self.predict_adapt(target_testX, 'source', 'source', 'source')
+        stm_error = self.score(predictY,  target_testY)
+        eval_list.append({'task': 'source-target (m0)', 'predict error': stm_error})
+
 
         #adaptation error
+        predictY = self.predict(target_testX, 'source', 'target')
+        adaptm_error = self.score(predictY,  target_testY)
+        eval_list.append({'task': 'adaptation (observe C)', 'predict error': adaptm_error})
+
         predictY = self.predict_adapt(target_testX, 'source', 'target', 'source')
-        adapt_error = self.score(predictY,  target_testY)
-        eval_list.append({'task': 'adaptation', 'predict error': adapt_error})
+        adaptm_error = self.score(predictY,  target_testY)
+        eval_list.append({'task': 'adaptation (m0)', 'predict error': adaptm_error})
 
         df = pd.DataFrame(eval_list)
         print(df)
+
+        return df

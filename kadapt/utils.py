@@ -1,3 +1,14 @@
+"""
+Utility function class
+part of the code is cloned from: https://github.com/yuchen-zhu/kernel_proxies/blob/main/KPV/utils.py
+see individual function for details
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
+
+
 import os,sys
 import time
 import numpy as np
@@ -28,9 +39,12 @@ from jax import grad, jit, vmap
 from jax import random
 
 
-# utility functions
-# clone from: https://github.com/yuchen-zhu/kernel_proxies/blob/main/KPV/utils.py
-
+"""
+Base library functions
+This part of the code is copied from https://github.com/yuchen-zhu/kernel_proxies/blob/main/KPV/utils.py
+Redistribution of the source code under MIT License
+date modified: Sept 19 2023
+"""
 
 @jax.jit
 def modist(v):
@@ -139,6 +153,34 @@ def katri_rao_col(a,b):
     return v(a,b)
 
 
+
+def stage2_weights(Gamma_w, Sigma_inv):
+    n_row = Gamma_w.shape[0]
+    arr = [mat_mul(jnp.diag(Gamma_w[i, :]), Sigma_inv) for i in range(n_row)]
+    return jnp.concatenate(arr, axis=0)
+
+
+def standardise(X):
+    scaler = StandardScaler()
+    if X.ndim == 1:
+        X_scaled = scaler.fit_transform(X.reshape(-1,1)).squeeze()
+        return X_scaled, scaler
+    else:
+        X_scaled = scaler.fit_transform(X).squeeze()
+        return X_scaled, scaler
+
+
+
+
+
+
+"""
+Base functions for computing kernels and inverse
+Author: Katherine Tsai
+License: MIT
+"""
+
+
 def integral_rbf_ker(x,y, ori_scale):
     """
     compute new gram matrix such that each entry is \tilde{K}(x,y)=\int K(z,x)K(z,y)dz, where K is the original kernel function
@@ -185,23 +227,6 @@ def ker_mat(X1,X2, kernel='rbf', scale=1.):
         K_x1x2 = jnp.prod(K_x1x2, axis=2)
    
     return K_x1x2
-
-
-def stage2_weights(Gamma_w, Sigma_inv):
-    n_row = Gamma_w.shape[0]
-    arr = [mat_mul(jnp.diag(Gamma_w[i, :]), Sigma_inv) for i in range(n_row)]
-    return jnp.concatenate(arr, axis=0)
-
-
-def standardise(X):
-    scaler = StandardScaler()
-    if X.ndim == 1:
-        X_scaled = scaler.fit_transform(X.reshape(-1,1)).squeeze()
-        return X_scaled, scaler
-    else:
-        X_scaled = scaler.fit_transform(X).squeeze()
-        return X_scaled, scaler
-
 
 def truncate_sqrtinv(X, thre=1e-5):
     """
@@ -261,6 +286,14 @@ def woodbury_identity(Q, lam, n):
         print("inv_temp is nan")         
     aprox_K = (jnp.eye(n)-mat_mul(mat_mul(Q,inv_temp), Q.T))/(lam*n)
     return aprox_K
+
+
+"""
+Parameter selection function
+This part of the code is adapted from https://github.com/yuchen-zhu/kernel_proxies/blob/main/KPV/utils.py
+Redistribution of the source code under MIT License
+date modified: Sept 19 2023
+"""
 
 
 #@jax.jit

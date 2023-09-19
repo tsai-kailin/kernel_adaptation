@@ -1,5 +1,14 @@
+"""
+Implementation of the kernel bridge function h0
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
+
+
 from kadapt.utils import *
-from kadapt.cme import ConditionalMeanEmbed
+from kadapt.models.plain_kernel.cme import ConditionalMeanEmbed
 import numpy as np
 import jax.numpy as jnp
 import jax.scipy.linalg as jsla
