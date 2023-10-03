@@ -17,7 +17,7 @@ import scipy.sparse as ss
 
 
 class Bridge_k0:
-  """ Construct the bridge function h0 = \sum_i alpha_ij \phi(w_i)\otimes\phi(c_j)
+  """ Construct the bridge function k0 = \sum_i alpha_ij \phi(w_i)\otimes\phi(c_j)
       vec(alpha)=(Gamma_xc\odot I)(n2*lam I + \Sigma)^{-1}y, alpha shape=(n1_samples, n2_samples)
       Gamma_xc = mu_w_cx.get_mean_embed(x,c)['Gamma'] #(n1_samples, n2_samples)
       \Sigma = (Gamma_xc^T K_ww Gamma_xc)K_cc
@@ -70,7 +70,7 @@ class Bridge_k0:
       #implement parameter selection
 
       D_t = modif_kron(mat_mul(K_WW, Gamma_xz), K_XX) 
-      mk_gamma_I=mat_trans(modif_kron(Gamma_xc, jnp.eye(n_sample)))
+      mk_gamma_I=mat_trans(modif_kron(Gamma_xz, jnp.eye(n_sample)))
       lam, loo2 = cal_l_yw(D_t, Sigma, mk_gamma_I , Y, lam_min, lam_max)
       print('selected lam of h_0:', lam)
 
@@ -87,7 +87,7 @@ class Bridge_k0:
     
     
     if method == 'nystrom':
-      print('use Nystrom method to estimate h0')
+      print('use Nystrom method to estimate k0')
       #q = min(2*int(np.sqrt(n_sample)), int(n_sample/10))
       q = min(250, n_sample)
       select_id = np.random.choice(n_sample, q, replace=False)
@@ -107,7 +107,7 @@ class Bridge_k0:
       vec_alpha = mat_mul(aprox_K, Y)
 
     elif method == 'original':
-      print('use linear solver to estimate h0')
+      print('use linear solver to estimate k0')
       vec_alpha = jsla.solve(F, Y)
     
     t25 = time.time()
@@ -121,12 +121,12 @@ class Bridge_k0:
 
 
   def __call__(self, new_w, new_x, Gamma_x):
-    """return h0(w,c)
+    """return k0(w,c)
     Args:
         new_w: variable W, ndarray shape = (n3_samples, n1_features)
         new_x: variable X, ndarray shape = (n3_samples, n2_features)}
     Returns:
-        h0(w,x): ndarray shape = (n3_samples)
+        k0(w,x): ndarray shape = (n3_samples)
     """
     # compute K_newWW
     
@@ -142,7 +142,7 @@ class Bridge_k0:
     return v(K_XnewX, K_WnewW)
 
   def get_EYx(self, new_x, cme_W_x):
-    """ when computing E[Y|c,x]=<h0, phi(c)\otimes mu_w|x,c>
+    """ when computing E[Y|c,x]=<k0, phi(c)\otimes mu_w|x,c>
     Args:
       new_x: ndarray shape=(n4_samples, n_features)
       cme_WC_x: ConditionalMeanEmbed
@@ -173,4 +173,85 @@ class Bridge_k0:
 
 
 
+
+
+
+
+class Bridge_k0_categorical(Bridge_k0):
+  """ Construct the bridge function k0 = \sum_i alpha_ij \phi(w_i)\otimes\phi(c_j)
+      vec(alpha)=(Gamma_xc\odot I)(n2*lam I + \Sigma)^{-1}y, alpha shape=(n1_samples, n2_samples)
+      Gamma_xc = mu_w_cx.get_mean_embed(x,c)['Gamma'] #(n1_samples, n2_samples)
+      \Sigma = (Gamma_xc^T K_ww Gamma_xc)K_cc
+  """
+
+  def __init__(self, Cw_xz_dict, covars, Y, lam, scale=1., method='original', lam_min=-4, lam_max=-1,  kernel_dict=None):
+    """Initiate the parameters
+    Args:
+      Cw_xz_dict: dict, ConditionalMeanEmbed
+      covars: covariates, dict {"C": ndarray shape=(n2_samples, n1_features), "X": ndarray shape=(n2_samples, n2_features)}
+      Y: labels labels,  (n2_samples,)
+      lam: reuglarization parameter, lam
+      scale: kernel length scale, float
+      method: approximation method, str
+      'original' for linear solver, 'nystrom' for Nystrom approximation
+      lam_min: minimum of lambda (log space) for hyperparameter tuning, float
+      lam_max: maximum of lambda (log space) for hyperparameter tuning, float
+    """
+    self.sc = scale
+
+    if kernel_dict == None:
+      kernel_dict = {}
+      kernel_dict['X'] = 'rbf'
+    
+    
+    
+
+    # concatenate Z
+    z_label = Cw_xz_dict.keys()
+    #print(z_label)
+    #print(type(z_label))
+    k0_lookup = {}
+    for z in z_label:
+      
+      idx = jnp.where(covars['Z'] == z)[0]
+      nz_sample = idx.shape[0]
+      X_z = covars['X'][idx,...]
+      Y_z = Y[idx,...]
+      covarsz = {}
+      #covarsz['Z'] = covars['Z'][idx,...]
+      covarsz['X'] = covars['X'][idx,...]
+
+
+      Cw_xz = Cw_xz_dict[z]
+      params = Cw_xz.get_params()
+      kernel_dict['W'] = params['kernel_dict']['Y']
+      
+      w_sc = params["scale"]
+      W_z = params["Y"]
+
+      k0 = Bridge_k0(Cw_xz, covarsz, Y_z, lam, 
+                      kernel_dict = kernel_dict, scale = self.sc,  
+                      method=method)
+
+      k0_lookup[z] = k0
+
+    self.kernel_dict = kernel_dict
+    self.k0_lookup = k0_lookup
+    self.z_label = z_label
+
+
+  def __call__(self, new_w, new_x, Gamma_x):
+    """return k0(w,c)
+    Args:
+        new_w: variable W, ndarray shape = (n3_samples, n1_features)
+        new_x: variable X, ndarray shape = (n3_samples, n2_features)}
+    Returns:
+        k0(w,x): ndarray shape = (n3_samples)
+    """
+    output = []
+    for z in self.z_label:
+      output.append(self.k0_lookup[z](new_w, new_x, Gamma_x))
+    output = jnp.array(output).sum(axis=0)
+
+    return output
 

@@ -3,6 +3,7 @@
 
 from jax import random
 import numpy as np
+import jax.numpy as jnp
 
 
 def gen_Z(n, mean, sigma, key):
@@ -11,9 +12,24 @@ def gen_Z(n, mean, sigma, key):
     return Z
 
 
+def gen_Zcategorical(n, prob, key):
+    Z = random.choice(key, jnp.arange(4), (n,), p=np.array(prob))
+
+    return Z
+
+def gen_Ucategorical(Z, n, key):
+
+    e1 = random.uniform(key[0],(n,),minval=0,maxval=0.25)+Z*0.25
+    U2 = 3*random.uniform(key[1],(n,),minval=0,maxval=1)+np.where((Z>1), 0, -1)
+    e3= np.where((U2>1),0,-1)
+    e4= np.where((U2<0),0,-1)
+    e5=(e3+e4)
+    U1=e1+e5+1
+    
+    return U1, U2
 
 
-def gen_U(Z, n,key):
+def gen_U(Z, n, key):
     e1=random.uniform(key[0],(n,),minval=0,maxval=1)
     U2=3*random.uniform(key[1],(n,),minval=0,maxval=1)-1
     e3= np.where((Z>0.5),0,-1)
@@ -44,3 +60,5 @@ def gen_Y(X1, X2, U1, U2, n):
 
   y= U2*(np.cos(2*(X1*X2+.3*U1+.2))+d)
   return y
+
+
