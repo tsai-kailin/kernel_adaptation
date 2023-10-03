@@ -23,6 +23,11 @@ see the example files under `/tests/`
 3. specify the training parameters and models using `.json` file. See `/tests/configs/demand_config.json` for example. 
 4. see `deep_example_partial.py` for the demo of deep features partial adaptation. The dataset is Demand dataset [[1]](#1)
 5. example code is test on single NVIDIA GeForce GTX TITAN X
+
+
+### Multiple Environments
+1. see `multienv_example.py` for the demo
+
 ### License
 See the License file.
 

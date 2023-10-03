@@ -250,12 +250,12 @@ for id, n in enumerate(n_list):
   WC = jnp.hstack((data1['W'][0:n,:], data1['C'][0:n,jnp.newaxis]))
   # estimate mu^p_{wx|c}
 
-  cme_WC_X_p = ConditionalMeanEmbed(WC, covarsx, lam_cme, scale,  method=cme_method)
+  cme_WC_X_p = ConditionalMeanEmbed(WC, covarsx, lam_cme, scale,  method=cme_method, lam_min=-5, lam_max=-2)
   # [Partial Identification] estimate mu^p_{w|x}
 
   cme_W_X_p = ConditionalMeanEmbed(data1['W'][0:n,:], covarsx, lam_cme, scale,  method=cme_method)
 
-  cme_C_X_p = ConditionalMeanEmbed(data1['C'][0:n], covarsx, lam_cme, scale,  method=cme_method)
+  cme_C_X_p = ConditionalMeanEmbed(data1['C'][0:n], covarsx, lam_cme, scale,  method=cme_method, lam_min=-5, lam_max=-2)
   # [Partial Identification] key=2807, estimate m0^p
   data4 = data_list[2807]
   covars = {}

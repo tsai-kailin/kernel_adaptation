@@ -59,7 +59,7 @@ def gen_Y_task1(C, U1, U2, n):
 
 def gen_C_task2(U1,U2,X1,X2, beta, n, key):
     #dgp12
-    C= U2**2+U1*np.cos(2*X1) + random.normal(key,(n,)) * beta
+    C= U2**2+U1*np.cos(2*X1) #+ random.normal(key,(n,)) * beta
     return C
 
 def gen_Y_task2(C, U1, U2, n):

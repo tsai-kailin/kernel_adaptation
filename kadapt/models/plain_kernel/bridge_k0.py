@@ -1,0 +1,176 @@
+"""
+Implementation of the kernel bridge function k0
+"""
+
+#Author: Katherine Tsai <kt14@illinois.edu>
+#License: MIT
+
+
+
+from kadapt.utils import *
+from kadapt.models.plain_kernel.cme import ConditionalMeanEmbed
+import numpy as np
+import jax.numpy as jnp
+import jax.scipy.linalg as jsla
+import time
+import scipy.sparse as ss
+
+
+class Bridge_k0:
+  """ Construct the bridge function h0 = \sum_i alpha_ij \phi(w_i)\otimes\phi(c_j)
+      vec(alpha)=(Gamma_xc\odot I)(n2*lam I + \Sigma)^{-1}y, alpha shape=(n1_samples, n2_samples)
+      Gamma_xc = mu_w_cx.get_mean_embed(x,c)['Gamma'] #(n1_samples, n2_samples)
+      \Sigma = (Gamma_xc^T K_ww Gamma_xc)K_cc
+  """
+
+  def __init__(self, Cw_xz, covars, Y, lam, scale=1., method='original', lam_min=-4, lam_max=-1,  kernel_dict=None):
+    """Initiate the parameters
+    Args:
+      Cw_xz: object, ConditionalMeanEmbed
+      covars: covariates, dict {"C": ndarray shape=(n2_samples, n1_features), "X": ndarray shape=(n2_samples, n2_features)}
+      Y: labels, (n2_samples,)
+      lam: reuglarization parameter, lam
+      scale: kernel length scale, float
+      method: approximation method, str
+      'original' for linear solver, 'nystrom' for Nystrom approximation
+      lam_min: minimum of lambda (log space) for hyperparameter tuning, float
+      lam_max: maximum of lambda (log space) for hyperparameter tuning, float
+    """
+    t1 = time.time()
+    self.sc = scale
+    n_sample = Y.shape[0]
+    # construct A matrix
+    X = covars["X"]
+
+    if kernel_dict == None:
+      kernel_dict = {}
+      kernel_dict['X'] = 'rbf'
+
+    K_XX = ker_mat(jnp.array(X), jnp.array(X), kernel=kernel_dict['X'], scale=self.sc)
+    self.X = X
+    params = Cw_xz.get_params()
+
+    W = params["Y"]
+    self.w_sc = params["scale"]
+    self.W = W
+    kernel_dict['W'] = params['kernel_dict']['Y']
+    K_WW = ker_mat(jnp.array(W), jnp.array(W), kernel=kernel_dict['W'], scale=params["scale"])
+    self.kernel_dict = kernel_dict
+
+
+    assert(set(params["Xlist"]) == set(covars.keys()))
+    # construct Gamma_xc matrix
+    Gamma_xz = Cw_xz.get_mean_embed(covars)["Gamma"] #shape = (n1_samples, n2_samples)
+    
+
+    # construct sigma
+    Sigma = Hadamard_prod(mat_mul(mat_mul(Gamma_xz.T, K_WW), Gamma_xz), K_XX)
+    
+    if lam == None:
+      #implement parameter selection
+
+      D_t = modif_kron(mat_mul(K_WW, Gamma_xz), K_XX) 
+      mk_gamma_I=mat_trans(modif_kron(Gamma_xc, jnp.eye(n_sample)))
+      lam, loo2 = cal_l_yw(D_t, Sigma, mk_gamma_I , Y, lam_min, lam_max)
+      print('selected lam of h_0:', lam)
+
+
+    #print("rank of sigma", jnp.linalg.matrix_rank(Sigma))
+    F = Sigma + n_sample*lam*jnp.eye(n_sample)
+    #print("F is pd", is_pos_def(F))
+    
+    t2 = time.time()
+
+
+    
+    #using linear solver
+    
+    
+    if method == 'nystrom':
+      print('use Nystrom method to estimate h0')
+      #q = min(2*int(np.sqrt(n_sample)), int(n_sample/10))
+      q = min(250, n_sample)
+      select_id = np.random.choice(n_sample, q, replace=False)
+      
+      K_q = Sigma[select_id, :][:, select_id]
+      K_nq = Sigma[:, select_id]
+      
+
+      inv_Kq_sqrt =  jnp.array(truncate_sqrtinv(K_q))
+      Q = K_nq.dot(inv_Kq_sqrt)
+
+      inv_temp = jsla.solve(lam*n_sample*jnp.eye(q)+Q.T.dot(Q), jnp.eye(q))
+      if jnp.isnan(inv_temp).any():
+        print("inv_temp is nan")         
+      aprox_K = (jnp.eye(n_sample)-(Q.dot(inv_temp)).dot(Q.T))/(lam*n_sample)
+
+      vec_alpha = mat_mul(aprox_K, Y)
+
+    elif method == 'original':
+      print('use linear solver to estimate h0')
+      vec_alpha = jsla.solve(F, Y)
+    
+    t25 = time.time()
+
+    
+    vec_alpha = stage2_weights(Gamma_xz, vec_alpha)
+    
+    t3 = time.time()
+    print("processing time: matrix preparation:%.4f solving inverse:%.4f, %.4f"%(t2-t1, t25-t2, t3-t25))
+    self.alpha = vec_alpha.reshape((-1, n_sample)) #shape=(n1_sample, n2_sample)
+
+
+  def __call__(self, new_w, new_x, Gamma_x):
+    """return h0(w,c)
+    Args:
+        new_w: variable W, ndarray shape = (n3_samples, n1_features)
+        new_x: variable X, ndarray shape = (n3_samples, n2_features)}
+    Returns:
+        h0(w,x): ndarray shape = (n3_samples)
+    """
+    # compute K_newWW
+    
+    K_WnewW = ker_mat(jnp.array(self.W), jnp.array(new_w), kernel=self.kernel_dict['W'], scale=self.w_sc) #(n1_sample, n3_sample)
+    K_WnewW = mat_mul(K_WnewW, Gamma_x)
+
+    # compute K_newCC
+    K_XnewX = ker_mat(jnp.array(self.X), jnp.array(new_x), kernel=self.kernel_dict['X'], scale=self.sc) #(n2_sample, n3_sample)
+
+
+    h_wx = fn = lambda kx, kw: jnp.dot(mat_mul(self.alpha, kx), kw)
+    v = vmap(h_wx, (1,1))
+    return v(K_XnewX, K_WnewW)
+
+  def get_EYx(self, new_x, cme_W_x):
+    """ when computing E[Y|c,x]=<h0, phi(c)\otimes mu_w|x,c>
+    Args:
+      new_x: ndarray shape=(n4_samples, n_features)
+      cme_WC_x: ConditionalMeanEmbed
+    """
+    #print('alpha', self.alpha.shape)
+    t1 = time.time()
+    
+    params = cme_W_x.get_mean_embed(new_x)
+    #print('Gamma', params["Gamma"].shape)
+    t2 = time.time()
+
+    # params["Y"] shape=(n1_samples, w_features+c_features)
+    new_w = params["Y"]
+    # Gamma shape=(n1_samples, n4_samples)
+    Gamma_x = params["Gamma"]
+    kxTalphakw = self.__call__(new_w, new_x["X"], Gamma_x)
+    t3 = time.time()
+    #fn = lambda x: jnp.dot(kxTalphakw, x)
+    #v = vmap(fn, (1))
+    #print(kxTalphakw.shape)
+
+    #result = v(params["Gamma"])
+    t4 = time.time()
+
+    print("inference time: %.4f/%.4f/%.4f"%(t2-t1, t3-t2, t4-t3))
+    return kxTalphakw
+
+
+
+
+

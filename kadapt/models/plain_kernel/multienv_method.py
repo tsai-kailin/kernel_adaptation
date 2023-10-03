@@ -9,27 +9,10 @@ Implementation of the base kernel estimator
 import jax.numpy as jnp
 
 
-def split_data_widx(data, split_index):
-    """split data with indices, return dictionary
-    Args:
-        data: dict
-        split_idx: ndarray
-    Returns:
-        sub_data: dict
-    """
-    sub_data = {}
-    keys = data.keys()
-    print('split',split_index.shape)
-    for key in keys:
-        if len(data[key].shape)>1:
-            sub_data[key] = jnp.array(data[key][split_index,:])
-        else:
-            sub_data[key] = jnp.array(data[key][split_index])
-    return sub_data
 
 
 
-class KernelMethod:
+class MultiKernelMethod:
     """
     Base estimator for the adaptation
     split_data(), predict(), evaluation(), are implemented by the child class
@@ -58,36 +41,43 @@ class KernelMethod:
         self.fitted = False
         
         if lam_set == None:
-            lam_set={'cme': None, 'h0': None, 'm0': None}
+            lam_set={'cme': None, 'k0': None}
         
 
         self.lam_set = lam_set
 
         if method_set == None:
-            method_set = {'cme': 'original', 'h0': 'original', 'm0': 'original'}
+            method_set = {'cme': 'original', 'k0': 'original'}
         self.method_set = method_set
 
         if kernel_dict == None:
-            kernel_dict['cme_w_xc'] = {'X': 'rbf', 'C': 'rbf', 'Y':'rbf'} #Y is W
-            kernel_dict['cme_wc_x'] = {'X': 'rbf', 'Y': [{'kernel':'rbf', 'dim':2}, {'kernel':'rbf', 'dim':1}]} # Y is (W,C)
-            kernel_dict['cme_c_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is C
+            kernel_dict['cme_w_xz'] = {'X': 'rbf', 'Z': 'rbf', 'Y':'rbf'} #Y is W
             kernel_dict['cme_w_x']  = {'X': 'rbf', 'Y': 'rbf'} # Y is W
-            kernel_dict['h0']       = {'C': 'rbf'}
-            kernel_dict['m0']       = {'C': 'rbf', 'X':'rbf'}
+            kernel_dict['k0']       = {'X': 'rbf'}
         
         self.kernel_dict = kernel_dict 
 
-    def fit(self):
+    def fit(self, train_target=True):
         #split dataset
         if self.split:
             self.split_data()
             print('complete data split')
         # learn estimators from the source domain
-        self.source_estimator =  self._fit_one_domain(self.source_train)
+        self.source_estimator =  self._fit_source_domains(self.source_train)
 
         # learn estimators from the target domain
-        self.target_estimator =  self._fit_one_domain(self.target_train)
+        if train_target:
+            self.target_estimator =  self._fit_source_domains(self.target_train)
+            
+        else:
+            self.target_estimator = self._fit_target_domain(self.target_train)
+        
         self.fitted = True
+
+    def split_data(self):
+        """Split data."""
+        raise NotImplementedError("Implemented in child class.")
+
 
     def predict(self):
         """Fits the model to the training data."""
